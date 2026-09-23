@@ -1,0 +1,81 @@
+# Contrato de eventos (diseño preliminar SOA/EDA) para el dominio Autos.
+# Complementa a autos-openapi.yaml: mientras ese contrato describe la API
+# síncrona de consumo (búsqueda y reserva), este describe los eventos
+# asíncronos que el sistema emite cuando cambia el estado de una orden,
+# para que otros sistemas del ecosistema Booking (u otros grupos) se
+# suscriban vía el mecanismo de Webhooks ya implementado en la API REST
+# (POST /webhooks). DEPOT_UPDATE se documenta como evolución futura:
+# el evento existe en el enum de suscripción pero todavía no se dispara
+# desde ningún flujo real.
+asyncapi: 2.6.0
+
+info:
+  title: GDS Autos - Eventos de dominio
+  version: 1.0.0
+  description: >
+    Eventos de negocio del dominio de renta de autos, entregados por HTTP
+    POST a los endpoints registrados en /webhooks (ver autos-openapi.yaml).
+  contact:
+    name: Grupo Autos
+    email: jlcadenac@puce.edu.ec
+
+servers:
+  webhookDelivery:
+    url: '{subscriberUrl}'
+    protocol: https
+    description: URL del sistema suscriptor, registrada vía POST /webhooks.
+    variables:
+      subscriberUrl:
+        description: URL provista por el suscriptor al registrar el webhook.
+
+channels:
+  autos.order.events:
+    description: Canal lógico de eventos de órdenes de renta de autos.
+    subscribe:
+      summary: Notificación entregada al webhook suscrito.
+      message:
+        $ref: '#/components/messages/WebhookPayload'
+
+components:
+  messages:
+    WebhookPayload:
+      name: WebhookPayload
+      title: Evento de dominio de Autos
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/WebhookPayload'
+
+  schemas:
+    WebhookPayload:
+      type: object
+      required:
+        - eventId
+        - eventType
+        - timestamp
+        - resourceId
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: Identificador único del evento (para deduplicación por el consumidor).
+        eventType:
+          type: string
+          enum:
+            - CAR_ORDER_CONFIRMED
+            - CAR_ORDER_CANCELLED
+            - DEPOT_UPDATE
+          description: >
+            CAR_ORDER_CONFIRMED y CAR_ORDER_CANCELLED se disparan hoy desde
+            AutosService (orders/create y orders/:id/cancel). DEPOT_UPDATE
+            está documentado para una futura integración con el módulo de
+            administración de agencias, aún no implementada.
+        timestamp:
+          type: string
+          format: date-time
+        resourceId:
+          type: string
+          format: uuid
+          description: ID de la orden afectada.
+        data:
+          type: object
+          description: Detalle adicional del evento (locator, status, total_price).
