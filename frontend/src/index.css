@@ -1,0 +1,82 @@
+@import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  /* Neutrales (casi negro para header/footer, estilo travel-brand) */
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #f7f7f5;
+  --color-neutral-100: #eeeeec;
+  --color-neutral-200: #dedede;
+  --color-neutral-300: #c2c2be;
+  --color-neutral-400: #8f8f89;
+  --color-neutral-500: #68685f;
+  --color-neutral-600: #4a4a44;
+  --color-neutral-700: #33332f;
+  --color-neutral-800: #1f1f1c;
+  --color-neutral-900: #141310;
+
+  /* Marca: naranja vibrante sobre casi-negro (referencia: Sixt) */
+  --color-brand-50: #fff2ea;
+  --color-brand-100: #ffe0cc;
+  --color-brand-300: #ff9d5c;
+  --color-brand-500: #ff5a1f;
+  --color-brand-600: #e64500;
+  --color-brand-700: #b83700;
+
+  --color-accent-500: #ffb020;
+  --color-accent-600: #e0940a;
+
+  /* Semánticos */
+  --color-success-50: #ecfdf3;
+  --color-success-600: #17803d;
+  --color-warning-50: #fffaeb;
+  --color-warning-600: #b45309;
+  --color-danger-50: #fef3f2;
+  --color-danger-600: #c1121f;
+
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  --shadow-sm: 0 1px 2px 0 rgb(16 24 40 / 0.05);
+  --shadow-md: 0 4px 8px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.04);
+  --shadow-lg: 0 20px 40px -8px rgb(20 19 16 / 0.18), 0 8px 16px -8px rgb(20 19 16 / 0.1);
+}
+
+body {
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-900);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-up {
+  opacity: 0;
+  animation: fade-up 0.5s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+.display-heading {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  line-height: 1.05;
+}
