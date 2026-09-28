@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ProblemDetailsFilter } from './common/filters/problem-details.filter';
+import { WebhookPayloadDto } from './modules/autos/dto/webhook.dto';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -27,7 +28,38 @@ async function bootstrap() {
     .setVersion('1.0')
     .build();
   
-  const document = SwaggerModule.createDocument(app, config);
+  // extraModels: registra WebhookPayloadDto en components.schemas aunque no
+  // aparezca en ningún @Body()/@ApiResponse() de un endpoint (solo lo usa el
+  // callback inyectado abajo).
+  const document = SwaggerModule.createDocument(app, config, {
+    extraModels: [WebhookPayloadDto],
+  });
+
+  // @nestjs/swagger no tiene decorador para 'callbacks' de OpenAPI (documenta
+  // el POST que el servidor le hará a la URL del webhook cuando ocurra un evento).
+  // Se inyecta manualmente para que Swagger sea fiel al contrato (autos-openapi.yaml).
+  const webhooksPost = document.paths['/api/v1/webhooks']?.post;
+  if (webhooksPost) {
+    webhooksPost.callbacks = {
+      carEvent: {
+        '{$request.body#/url}': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/WebhookPayloadDto' },
+                },
+              },
+            },
+            responses: {
+              '200': { description: 'Evento recibido exitosamente' },
+            },
+          },
+        },
+      },
+    };
+  }
+
   SwaggerModule.setup('api/docs', app, document);
 
   await app.listen(process.env.PORT || 3000);
