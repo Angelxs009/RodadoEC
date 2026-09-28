@@ -146,3 +146,13 @@ export function SparkleIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function ExternalLinkIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M14 4h6v6" />
+      <path d="M10 14L20 4" />
+      <path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6" />
+    </svg>
+  );
+}

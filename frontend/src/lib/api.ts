@@ -22,6 +22,7 @@ import type {
 // En dev, el proxy de Vite reenvía '/api' al backend local (ver vite.config.ts).
 // En producción se apunta directo a la API desplegada vía VITE_API_URL (ver .env.production.example).
 const BASE_URL = `${import.meta.env.VITE_API_URL ?? ''}/api/v1`;
+export const SWAGGER_URL = `${import.meta.env.VITE_API_URL ?? ''}/api/docs`;
 const AFFILIATE_ID = '1001';
 const ADMIN_TOKEN_KEY = 'rodadoec_admin_token';
 

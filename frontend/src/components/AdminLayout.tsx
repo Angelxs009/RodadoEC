@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { setAdminToken } from '../lib/api';
+import { SWAGGER_URL, setAdminToken } from '../lib/api';
+import { ExternalLinkIcon } from './icons';
 import { PageContainer } from './PageContainer';
 
 const TABS = [
@@ -40,13 +41,24 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               </NavLink>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="mb-2 rounded-full px-3 py-1.5 text-xs font-bold text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800"
-          >
-            Cerrar sesión
-          </button>
+          <div className="mb-2 flex items-center gap-1">
+            <a
+              href={SWAGGER_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800"
+            >
+              Swagger
+              <ExternalLinkIcon className="size-3.5" />
+            </a>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-full px-3 py-1.5 text-xs font-bold text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800"
+            >
+              Cerrar sesión
+            </button>
+          </div>
         </nav>
         {children}
       </div>
