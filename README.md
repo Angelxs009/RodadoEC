@@ -106,8 +106,26 @@ npm run dev
 ```
 App: `http://localhost:5173` (proxy configurado hacia el backend en `vite.config.ts`)
 
+## 6.1 Despliegue en la nube
+
+El proyecto ya está preparado para desplegarse (Dockerfile del backend, blueprint de Render, y frontend parametrizado con `VITE_API_URL`). Pasos:
+
+### Backend + base de datos → Render
+1. En [render.com](https://render.com), **New → Blueprint**, apuntar al repo `Angelxs009/RodadoEC` (usa `render.yaml` en la raíz: crea el web service `rodadoec-backend` desde `backend/Dockerfile` y una Postgres administrada `rodadoec-db`, ya enlazadas por `DATABASE_URL`).
+2. Al desplegar pedirá `CORS_ORIGINS` (variable marcada `sync: false`): déjala vacía por ahora, o ponla luego con la URL del frontend (ver paso 4).
+3. Al terminar, Render da una URL pública, ej. `https://rodadoec-backend.onrender.com`. Swagger queda en `/api/docs`. La app siembra la base automáticamente al primer arranque (`AutosSeedService`).
+
+### Frontend → Vercel
+1. En [vercel.com](https://vercel.com), **New Project**, importar el mismo repo, **Root Directory:** `frontend`.
+2. Framework preset: Vite (autodetectado). Build command y output quedan por defecto (`npm run build` / `dist`).
+3. Variable de entorno `VITE_API_URL` = la URL del backend de Render (sin slash final, ej. `https://rodadoec-backend.onrender.com`) — ver `.env.production.example`.
+4. Deploy. Vercel da una URL, ej. `https://rodadoec.vercel.app`. Volver a Render y setear `CORS_ORIGINS` a esa URL para restringir el CORS del backend en producción (si se deja vacío, el backend acepta cualquier origen).
+
+### Notas
+- `synchronize: true` en TypeORM crea el esquema automáticamente en la Postgres de Render; no se usan migraciones (prototipo académico).
+- El plan free de Render "duerme" el backend tras inactividad: la primera petición tras un rato puede tardar ~30s en responder.
+
 ## 7. Limitaciones conocidas / alcance no cubierto
 
-- **No hay despliegue en la nube**: el sistema corre localmente. Pendiente como siguiente paso.
 - **Seguridad simplificada**: no existe un servidor de autorización OAuth2 real; el guard de scopes (`ScopesGuard`) solo exige la presencia de un header `Authorization: Bearer`, sin validar firma ni claims. El contrato documenta los scopes reales (`autos:read`, `autos:book`, `autos:cancel`, `autos:webhooks`) vía Swagger para fines de interoperabilidad.
 - El evento `DEPOT_UPDATE` está documentado pero no implementado (ver sección 5).

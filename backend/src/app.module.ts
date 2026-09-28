@@ -25,7 +25,13 @@ import { AdminModule } from './modules/admin/admin.module';
         type: 'postgres',
         url: configService.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: configService.get<string>('NODE_ENV') !== 'production', // Precaución en producción
+        // Prototipo académico sin migraciones: se sincroniza el esquema en todos los
+        // entornos y el seeder puebla la base si está vacía (ver AutosSeedService).
+        synchronize: true,
+        ssl:
+          configService.get<string>('NODE_ENV') === 'production'
+            ? { rejectUnauthorized: false } // requerido por Postgres administrado (Render, etc.)
+            : false,
       }),
     }),
 

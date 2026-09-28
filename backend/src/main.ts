@@ -7,7 +7,8 @@ import { ProblemDetailsFilter } from './common/filters/problem-details.filter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.enableCors();
+  const allowedOrigins = process.env.CORS_ORIGINS?.split(',').map((o) => o.trim());
+  app.enableCors({ origin: allowedOrigins && allowedOrigins.length > 0 ? allowedOrigins : true });
   app.setGlobalPrefix('api/v1');
 
   app.useGlobalPipes(

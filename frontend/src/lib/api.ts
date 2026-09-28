@@ -19,7 +19,9 @@ import type {
   CreateVehicleInput,
 } from '../types/admin';
 
-const BASE_URL = '/api/v1';
+// En dev, el proxy de Vite reenvía '/api' al backend local (ver vite.config.ts).
+// En producción se apunta directo a la API desplegada vía VITE_API_URL (ver .env.production.example).
+const BASE_URL = `${import.meta.env.VITE_API_URL ?? ''}/api/v1`;
 const AFFILIATE_ID = '1001';
 
 export class ApiError extends Error {
