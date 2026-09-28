@@ -1,8 +1,9 @@
 import {
-  Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, Query,
+  Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { OrderStatus } from '../autos/entities/order.entity';
+import { AdminAuthGuard } from './auth/admin-auth.guard';
 import { AdminService } from './admin.service';
 import { CreateDepotAdminDto, UpdateDepotAdminDto } from './dto/depot-admin.dto';
 import { CreateVehicleAdminDto, UpdateVehicleAdminDto } from './dto/vehicle-admin.dto';
@@ -11,9 +12,12 @@ import { CreateVehicleAdminDto, UpdateVehicleAdminDto } from './dto/vehicle-admi
  * Backoffice interno de administración del dominio Autos: no forma parte del
  * contrato público autos-openapi.yaml (ese contrato es de consumo, no de
  * gestión), pero se documenta igual en Swagger bajo su propio tag.
+ * Protegido con login propio del backoffice (ver AdminAuthController).
  */
 @Controller('admin')
 @ApiTags('Administración')
+@UseGuards(AdminAuthGuard)
+@ApiBearerAuth()
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 

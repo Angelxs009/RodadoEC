@@ -26,6 +26,7 @@ async function bootstrap() {
     .setTitle('Booking Prototipo API')
     .setDescription('API base para los dominios de Alojamientos, Autos, Atracciones y Vuelos.')
     .setVersion('1.0')
+    .addBearerAuth() // usado por el login del backoffice de Admin (POST /admin/auth/login)
     .build();
   
   // extraModels: registra WebhookPayloadDto en components.schemas aunque no

@@ -1,9 +1,11 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AdminLayout } from './components/AdminLayout';
 import { Layout } from './components/Layout';
+import { RequireAdminAuth } from './components/RequireAdminAuth';
 import { ScrollToTop } from './components/ScrollToTop';
 import { BookingProvider } from './lib/booking-context';
 import { AdminDepotsPage } from './pages/admin/AdminDepotsPage';
+import { AdminLoginPage } from './pages/admin/AdminLoginPage';
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage';
 import { AdminVehiclesPage } from './pages/admin/AdminVehiclesPage';
 import { CheckoutPage } from './pages/CheckoutPage';
@@ -25,36 +27,45 @@ function App() {
             <Route path="/auto/:vehicleId" element={<VehicleDetailPage />} />
             <Route path="/checkout" element={<CheckoutPage />} />
             <Route path="/orden/:orderId" element={<ConfirmationPage />} />
+            <Route path="/admin/login" element={<AdminLoginPage />} />
             <Route
               path="/admin"
               element={
-                <AdminLayout>
-                  <AdminVehiclesPage />
-                </AdminLayout>
+                <RequireAdminAuth>
+                  <AdminLayout>
+                    <AdminVehiclesPage />
+                  </AdminLayout>
+                </RequireAdminAuth>
               }
             />
             <Route
               path="/admin/depots"
               element={
-                <AdminLayout>
-                  <AdminDepotsPage />
-                </AdminLayout>
+                <RequireAdminAuth>
+                  <AdminLayout>
+                    <AdminDepotsPage />
+                  </AdminLayout>
+                </RequireAdminAuth>
               }
             />
             <Route
               path="/admin/orders"
               element={
-                <AdminLayout>
-                  <AdminOrdersPage />
-                </AdminLayout>
+                <RequireAdminAuth>
+                  <AdminLayout>
+                    <AdminOrdersPage />
+                  </AdminLayout>
+                </RequireAdminAuth>
               }
             />
             <Route
               path="/admin/webhooks"
               element={
-                <AdminLayout>
-                  <WebhooksPage />
-                </AdminLayout>
+                <RequireAdminAuth>
+                  <AdminLayout>
+                    <WebhooksPage />
+                  </AdminLayout>
+                </RequireAdminAuth>
               }
             />
           </Routes>
