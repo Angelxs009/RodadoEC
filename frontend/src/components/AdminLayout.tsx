@@ -6,6 +6,7 @@ const TABS = [
   { to: '/admin', label: 'Vehículos', end: true },
   { to: '/admin/depots', label: 'Agencias' },
   { to: '/admin/orders', label: 'Órdenes' },
+  { to: '/admin/webhooks', label: 'Webhooks' },
 ];
 
 export function AdminLayout({ children }: { children: ReactNode }) {

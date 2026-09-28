@@ -25,7 +25,6 @@ function App() {
             <Route path="/auto/:vehicleId" element={<VehicleDetailPage />} />
             <Route path="/checkout" element={<CheckoutPage />} />
             <Route path="/orden/:orderId" element={<ConfirmationPage />} />
-            <Route path="/webhooks" element={<WebhooksPage />} />
             <Route
               path="/admin"
               element={
@@ -47,6 +46,14 @@ function App() {
               element={
                 <AdminLayout>
                   <AdminOrdersPage />
+                </AdminLayout>
+              }
+            />
+            <Route
+              path="/admin/webhooks"
+              element={
+                <AdminLayout>
+                  <WebhooksPage />
                 </AdminLayout>
               }
             />

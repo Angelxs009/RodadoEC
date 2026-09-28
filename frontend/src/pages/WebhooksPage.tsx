@@ -2,8 +2,6 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { WebhookIcon } from '../components/icons';
-import { PageContainer } from '../components/PageContainer';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import { Input } from '../components/Input';
 import { ApiError, autosApi } from '../lib/api';
@@ -77,20 +75,14 @@ export function WebhooksPage() {
   }
 
   return (
-    <PageContainer>
     <div className="flex max-w-2xl flex-col gap-8">
       <div>
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-10 items-center justify-center rounded-full bg-brand-50 text-brand-600">
-            <WebhookIcon className="size-5" />
-          </span>
-          <h1 className="display-heading text-2xl text-neutral-900 sm:text-3xl">
-            Webhooks de Autos
-          </h1>
-        </div>
-        <p className="mt-2 text-sm text-neutral-500">
+        <h1 className="display-heading text-2xl text-neutral-900 sm:text-3xl">
+          Webhooks de eventos
+        </h1>
+        <p className="text-sm text-neutral-500">
           Registra endpoints externos para recibir notificaciones de eventos de renta en tiempo
-          real.
+          real (SOA/EDA).
         </p>
       </div>
 
@@ -169,6 +161,5 @@ export function WebhooksPage() {
           ))}
       </div>
     </div>
-    </PageContainer>
   );
 }

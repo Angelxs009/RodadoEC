@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { CarIcon, SettingsIcon, WebhookIcon } from './icons';
+import { CarIcon, SettingsIcon } from './icons';
 
 export function Layout({ children }: { children: ReactNode }) {
   return (
@@ -22,13 +22,6 @@ export function Layout({ children }: { children: ReactNode }) {
             >
               <SettingsIcon className="size-4" />
               Admin
-            </Link>
-            <Link
-              to="/webhooks"
-              className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-white"
-            >
-              <WebhookIcon className="size-4" />
-              Webhooks
             </Link>
           </nav>
         </div>
