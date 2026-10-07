@@ -18,8 +18,9 @@ import { SuppliersRequestDto, SuppliersResponseDto } from './dto/suppliers.dto';
 import { WebhookSubscriptionDto } from './dto/webhook.dto';
 import { Depot } from './entities/depot.entity';
 import { Order, OrderStatus } from './entities/order.entity';
+import { Payment, PaymentStatus } from './entities/payment.entity';
 import { Supplier } from './entities/supplier.entity';
-import { Vehicle } from './entities/vehicle.entity';
+import { Vehicle, VehicleStatus } from './entities/vehicle.entity';
 import { WebhookEvent, WebhookSubscription } from './entities/webhook-subscription.entity';
 import {
   bookingNotConfirmed,
@@ -27,7 +28,9 @@ import {
   carNoLongerAvailable,
   orderNotFound,
   orderNotModifiable,
+  paymentRequired,
   priceChanged,
+  vehicleReserved,
 } from './errors/autos-errors';
 import { WebhooksDispatcherService } from './webhooks/webhooks-dispatcher.service';
 
@@ -41,7 +44,7 @@ interface CachedHold {
   search_token: string;
 }
 
-interface CachedPreview {
+export interface CachedPreview {
   vehicle_id: string;
   search_token: string;
   extras: string[];
@@ -73,6 +76,8 @@ export class AutosService {
     private readonly depotRepository: Repository<Depot>,
     @InjectRepository(Supplier)
     private readonly supplierRepository: Repository<Supplier>,
+    @InjectRepository(Payment)
+    private readonly paymentRepository: Repository<Payment>,
     private readonly cache: TtlCacheService,
     private readonly webhooksDispatcher: WebhooksDispatcherService,
   ) {}
@@ -91,7 +96,12 @@ export class AutosService {
     }
 
     const limit = searchRequest.maximum_results ?? 100;
-    const vehicles = await this.vehicleRepository.find({ where, take: limit });
+    const found = await this.vehicleRepository.find({ where, take: limit });
+    // Los disponibles primero; los reservados se muestran igual, marcados como no disponibles.
+    const vehicles = [...found].sort(
+      (a, b) =>
+        Number(b.status === VehicleStatus.AVAILABLE) - Number(a.status === VehicleStatus.AVAILABLE),
+    );
 
     const days = daysBetween(searchRequest.route.pickup.datetime, searchRequest.route.dropoff.datetime);
     const search_token = randomUUID();
@@ -104,6 +114,7 @@ export class AutosService {
         vehicle_id: v.vehicle_id,
         price: Number((v.price_per_day * days).toFixed(2)),
         supplier_id: v.supplier_id,
+        available: v.status === VehicleStatus.AVAILABLE,
       })),
       metadata: { total_results: vehicles.length, next_page: null },
       search_token,
@@ -122,6 +133,7 @@ export class AutosService {
         bag_capacity: v.bag_capacity,
         seats: v.seats,
         image_url: v.image_url,
+        status: v.status,
       })),
     };
   }
@@ -184,13 +196,14 @@ export class AutosService {
   //  Gestión de Órdenes (Reservas)
   // ═══════════════════════════════════════════════════════════════════════
 
-  holdOrder(holdRequest: OrderHoldRequestDto): OrderHoldResponseDto {
+  async holdOrder(holdRequest: OrderHoldRequestDto): Promise<OrderHoldResponseDto> {
     const cached = this.cache.get<CachedSearch>(`search:${holdRequest.search_token}`);
     const vehicle = cached?.vehicles.find((v) => v.vehicle_id === holdRequest.vehicle_id);
 
     if (!cached || !vehicle) {
       throw carNoLongerAvailable(holdRequest.vehicle_id);
     }
+    await this.assertVehicleAvailable(holdRequest.vehicle_id);
 
     const hold_id = randomUUID();
     this.cache.set(
@@ -206,7 +219,7 @@ export class AutosService {
     };
   }
 
-  previewOrder(previewRequest: OrderPreviewRequestDto): OrderPreviewResponseDto {
+  async previewOrder(previewRequest: OrderPreviewRequestDto): Promise<OrderPreviewResponseDto> {
     const cached = this.cache.get<CachedSearch>(`search:${previewRequest.search_token}`);
     const vehicle = cached?.vehicles.find((v) => v.vehicle_id === previewRequest.vehicle_id);
 
@@ -217,6 +230,7 @@ export class AutosService {
     if (previewRequest.hold_id && !this.cache.has(`hold:${previewRequest.hold_id}`)) {
       throw carNoLongerAvailable(previewRequest.vehicle_id);
     }
+    await this.assertVehicleAvailable(previewRequest.vehicle_id);
 
     const days = daysBetween(cached.route.pickup.datetime, cached.route.dropoff.datetime);
     const basePrice = vehicle.price_per_day * days;
@@ -264,6 +278,34 @@ export class AutosService {
       throw priceChanged();
     }
 
+    // Sin pago aprobado no hay reserva: el pago debe existir, estar APROBADO,
+    // no haberse usado ya, corresponder a esta previsualización y cubrir el total.
+    const payment = await this.paymentRepository.findOneBy({
+      reference: createRequest.payment_reference,
+    });
+    if (
+      !payment ||
+      payment.status !== PaymentStatus.APPROVED ||
+      payment.order_id !== null ||
+      payment.order_preview_id !== createRequest.order_preview_id ||
+      payment.amount !== preview.total_price
+    ) {
+      throw paymentRequired(
+        'Se requiere un pago aprobado (POST /payments) para esta previsualización antes de crear la orden.',
+      );
+    }
+
+    // Reserva atómica del auto: solo una petición puede pasar de AVAILABLE a RESERVED.
+    const reserved = await this.vehicleRepository.update(
+      { vehicle_id: vehicle.vehicle_id, status: VehicleStatus.AVAILABLE },
+      { status: VehicleStatus.RESERVED },
+    );
+    if (!reserved.affected) {
+      payment.status = PaymentStatus.REFUNDED;
+      await this.paymentRepository.save(payment);
+      throw vehicleReserved(vehicle.vehicle_id);
+    }
+
     const order = this.orderRepository.create({
       locator: `AUTOS-${randomUUID().slice(0, 8).toUpperCase()}`,
       status: OrderStatus.CONFIRMED,
@@ -277,7 +319,18 @@ export class AutosService {
       customer_id: customerId,
     });
 
-    const saved = await this.orderRepository.save(order);
+    let saved: Order;
+    try {
+      saved = await this.orderRepository.save(order);
+    } catch (err) {
+      await this.vehicleRepository.update(
+        { vehicle_id: vehicle.vehicle_id },
+        { status: VehicleStatus.AVAILABLE },
+      );
+      throw err;
+    }
+    payment.order_id = saved.id;
+    await this.paymentRepository.save(payment);
     this.cache.delete(`preview:${createRequest.order_preview_id}`);
 
     this.webhooksDispatcher
@@ -338,9 +391,22 @@ export class AutosService {
     order.status = OrderStatus.CANCELLED;
     const saved = await this.orderRepository.save(order);
 
+    // Cancelar libera el auto y reembolsa (simulado) el pago asociado.
+    const vehicleId = (order.vehicle_details as { vehicle_id?: string }).vehicle_id;
+    if (vehicleId) {
+      await this.vehicleRepository.update({ vehicle_id: vehicleId }, { status: VehicleStatus.AVAILABLE });
+    }
+    await this.paymentRepository.update({ order_id: order.id }, { status: PaymentStatus.REFUNDED });
+
     this.webhooksDispatcher
       .dispatch(WebhookEvent.CAR_ORDER_CANCELLED, saved)
       .catch(() => undefined);
+  }
+
+  private async assertVehicleAvailable(vehicleId: string): Promise<void> {
+    const vehicle = await this.vehicleRepository.findOneBy({ vehicle_id: vehicleId });
+    if (!vehicle) throw carNoLongerAvailable(vehicleId);
+    if (vehicle.status !== VehicleStatus.AVAILABLE) throw vehicleReserved(vehicleId);
   }
 
   private toOrderDetail(order: Order): OrderDetailDto {

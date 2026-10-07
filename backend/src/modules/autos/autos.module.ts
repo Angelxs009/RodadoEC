@@ -6,6 +6,8 @@ import { CommonModule } from '../../common/common.module';
 import { CustomersModule } from '../customers/customers.module';
 import { TtlCacheService } from './cache/ttl-cache.service';
 import { Depot } from './entities/depot.entity';
+import { Payment } from './entities/payment.entity';
+import { PaymentsService } from './payments.service';
 import { Order } from './entities/order.entity';
 import { Supplier } from './entities/supplier.entity';
 import { Vehicle } from './entities/vehicle.entity';
@@ -15,11 +17,11 @@ import { WebhooksDispatcherService } from './webhooks/webhooks-dispatcher.servic
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, WebhookSubscription, Vehicle, Depot, Supplier]),
+    TypeOrmModule.forFeature([Order, WebhookSubscription, Vehicle, Depot, Supplier, Payment]),
     CommonModule,
     CustomersModule, // CustomerTokenService: liga la orden al cliente logueado, si lo hay
   ],
   controllers: [AutosController],
-  providers: [AutosService, TtlCacheService, AutosSeedService, WebhooksDispatcherService],
+  providers: [AutosService, PaymentsService, TtlCacheService, AutosSeedService, WebhooksDispatcherService],
 })
 export class AutosModule {}

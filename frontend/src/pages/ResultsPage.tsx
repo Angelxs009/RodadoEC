@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { BagIcon, CalendarIcon, DoorIcon, MapPinIcon, UsersIcon } from '../components/icons';
@@ -34,6 +35,7 @@ export function ResultsPage() {
       ),
     ),
   };
+  const availableCount = searchResponse?.data.filter((v) => v.available).length ?? 0;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,7 +83,7 @@ export function ResultsPage() {
       <div className="flex flex-col gap-6">
         <div className="flex items-baseline justify-between">
           <h1 className="display-heading text-2xl text-neutral-900 sm:text-3xl">
-            {searchResponse.metadata.total_results} autos disponibles
+            {availableCount} {availableCount === 1 ? 'auto disponible' : 'autos disponibles'}
           </h1>
           <Link to="/" className="text-sm font-bold text-brand-600 hover:underline">
             Modificar búsqueda
@@ -129,21 +131,29 @@ export function ResultsPage() {
           <div className="flex flex-col gap-3">
             {searchResponse.data.map((result, index) => {
               const detail = details[result.vehicle_id];
+              const reserved = !result.available;
               return (
                 <Card
                   key={result.vehicle_id}
                   style={{ animationDelay: `${index * 60}ms` }}
-                  className="fade-up group flex flex-col items-stretch gap-4 !p-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-lg sm:flex-row sm:items-center sm:!pr-6"
+                  className={`fade-up group flex flex-col items-stretch gap-4 !p-3 transition-all duration-200 sm:flex-row sm:items-center sm:!pr-6 ${
+                    reserved
+                      ? 'bg-neutral-50'
+                      : 'hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-lg'
+                  }`}
                 >
                   <VehicleImage
                     src={detail?.image_url}
                     alt={detail ? `${detail.make} ${detail.model}` : result.vehicle_id}
-                    className="h-44 w-full shrink-0 rounded-md sm:h-32 sm:w-52"
+                    className={`h-44 w-full shrink-0 rounded-md sm:h-32 sm:w-52 ${reserved ? 'opacity-50 grayscale' : ''}`}
                   />
                   <div className="flex flex-1 flex-col gap-1.5">
-                    <p className="text-base font-bold text-neutral-900">
-                      {detail ? `${detail.make} ${detail.model}` : result.vehicle_id}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-base font-bold text-neutral-900">
+                        {detail ? `${detail.make} ${detail.model}` : result.vehicle_id}
+                      </p>
+                      {reserved && <Badge tone="danger">Reservado</Badge>}
+                    </div>
                     {detail && (
                       <div className="flex flex-wrap gap-3 text-xs font-semibold text-neutral-500">
                         <span className="flex items-center gap-1">
@@ -171,8 +181,12 @@ export function ResultsPage() {
                         </p>
                       )}
                     </div>
-                    <Button size="sm" onClick={() => navigate(`/auto/${result.vehicle_id}`)}>
-                      Seleccionar
+                    <Button
+                      size="sm"
+                      disabled={reserved}
+                      onClick={() => navigate(`/auto/${result.vehicle_id}`)}
+                    >
+                      {reserved ? 'No disponible' : 'Seleccionar'}
                     </Button>
                   </div>
                 </Card>

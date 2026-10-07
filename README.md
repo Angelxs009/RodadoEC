@@ -45,10 +45,11 @@ El `AutosController` es fiel al contrato del curso (rutas planas: `/search`, `/o
 
 | Entidad | Tabla | Campos clave | Notas |
 |---|---|---|---|
-| `Vehicle` | `autos_vehicles` | `vehicle_id`, `make`, `model`, `car_type`, `transmission`, `price_per_day`, `supplier_id`, `depot_id` | Catálogo administrable; fuente de verdad para `/search` y `/details`. |
+| `Vehicle` | `autos_vehicles` | `vehicle_id`, `make`, `model`, `car_type`, `transmission`, `price_per_day`, `supplier_id`, `depot_id`, `status` (`AVAILABLE`/`RESERVED`) | Catálogo administrable (31 autos base); fuente de verdad para `/search` y `/details`. Un auto `RESERVED` no se puede volver a reservar hasta que el admin lo marque `AVAILABLE`. |
 | `Depot` | `autos_depots` | `depot_id`, `name`, `city_id`, `airport`, `score` | Agencias de recogida/entrega. |
 | `Supplier` | `autos_suppliers` | `supplier_id`, `name` | Proveedores de renta. |
 | `Order` | `autos_orders` | `locator`, `status`, `vehicle_details` (jsonb), `route_details` (jsonb), `extras`, `total_price`, `currency` | Snapshot del vehículo/ruta al momento de la reserva; persiste el ciclo de vida completo (CONFIRMED/CANCELLED). |
+| `Payment` | `autos_payments` | `reference`, `status` (`APPROVED`/`DECLINED`/`REFUNDED`), `amount`, `order_preview_id`, `card_brand`, `card_last4`, `order_id` | Pago simulado. Nunca guarda número completo ni CVV. Un pago aprobado se consume en una sola orden. |
 | `WebhookSubscription` | `autos_webhook_subscriptions` | `url`, `events` (array), `secret` | Suscripciones a eventos de dominio. |
 
 Las tablas se siembran automáticamente al arrancar (`AutosSeedService`, idempotente) con el catálogo inicial definido en `backend/src/modules/autos/data/mock-catalog.ts`.
@@ -61,12 +62,21 @@ Los estados efímeros del flujo de reserva (`search_token`, `hold_id`, `order_pr
 
 13 endpoints agrupados en 5 categorías: Búsqueda y Catálogo (`/search`, `/details`), Agencias y Proveedores (`/depots`, `/depots/reviews/scores`, `/suppliers`), Componentes Comunes (`/constants`), Gestión de Órdenes (`/orders/hold`, `/orders/preview`, `/orders/create`, `/orders/{id}`, `/orders/{id}/modify`, `/orders/{id}/cancel`) y Webhooks (`/webhooks`, `/webhooks/{id}`). Documentados en Swagger: `http://localhost:3000/api/docs`.
 
+### 4.1.1 Pago simulado y disponibilidad
+
+- `POST /payments` (extra, no contractual): simula una pasarela. Recibe `order_preview_id` + tarjeta; el monto lo toma el servidor de la previsualización. Tarjeta `4242 4242 4242 4242` = aprobada; `4000 0000 0000 0002` = rechazada (fondos insuficientes); número inválido (Luhn) o vencida = rechazada (HTTP 402).
+- `POST /orders/create` **exige** un `payment_reference` de un pago APROBADO, no usado, de esa previsualización y por el total exacto; si no, responde 402 `PAYMENT_REQUIRED`.
+- Al crear la orden el auto pasa a `RESERVED` de forma atómica (`UPDATE ... WHERE status='AVAILABLE'`): si dos clientes intentan reservarlo a la vez, solo uno gana y el otro recibe 409 `CAR_NO_LONGER_AVAILABLE` (y su pago se marca `REFUNDED`).
+- `/search` devuelve los autos reservados con `available: false`; la web los muestra como "Reservado" y no deja seleccionarlos. `hold`, `preview` y `payments` también rechazan autos reservados.
+- Cancelar una orden libera el auto y reembolsa (simulado) el pago. El admin también puede liberar/bloquear un auto: `POST /admin/vehicles/:id/release` y `/reserve`.
+
 ### 4.2 Backoffice de administración (no forma parte del contrato)
 
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET/POST | `/api/v1/admin/vehicles` | Listar / crear vehículos |
 | PUT/DELETE | `/api/v1/admin/vehicles/:id` | Editar / eliminar un vehículo |
+| POST | `/api/v1/admin/vehicles/:id/release` · `/reserve` | Marcar un vehículo como disponible / reservado |
 | GET/POST | `/api/v1/admin/depots` | Listar / crear agencias |
 | PUT/DELETE | `/api/v1/admin/depots/:id` | Editar / eliminar una agencia |
 | GET | `/api/v1/admin/orders` | Listar todas las órdenes (filtro opcional `?status=`) |

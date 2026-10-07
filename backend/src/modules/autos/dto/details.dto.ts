@@ -42,6 +42,12 @@ export class CarDetailsResultDto {
     description: 'Extra no contractual: ruta/URL de la foto del vehículo.',
   })
   image_url?: string | null;
+
+  @ApiPropertyOptional({
+    enum: ['AVAILABLE', 'RESERVED'],
+    description: 'Extra no contractual: estado del vehículo.',
+  })
+  status?: string;
 }
 
 export class CarDetailsResponseDto {

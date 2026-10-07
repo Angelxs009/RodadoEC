@@ -22,6 +22,20 @@ export const carNoLongerAvailable = (vehicleId: string) =>
     `El vehículo "${vehicleId}" ya no está disponible o el search_token expiró.`,
   );
 
+export const vehicleReserved = (vehicleId: string) =>
+  problem(
+    HttpStatus.CONFLICT,
+    ProblemCode.CAR_NO_LONGER_AVAILABLE,
+    'Vehículo reservado',
+    `El vehículo "${vehicleId}" ya está reservado y no estará disponible hasta que el administrador lo libere.`,
+  );
+
+export const paymentRequired = (detail: string) =>
+  problem(HttpStatus.PAYMENT_REQUIRED, ProblemCode.PAYMENT_REQUIRED, 'Pago requerido', detail);
+
+export const paymentDeclined = (detail: string) =>
+  problem(HttpStatus.PAYMENT_REQUIRED, ProblemCode.PAYMENT_DECLINED, 'Pago rechazado', detail);
+
 export const priceChanged = () =>
   problem(
     HttpStatus.CONFLICT,

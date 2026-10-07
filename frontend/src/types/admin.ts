@@ -14,9 +14,12 @@ export interface AdminVehicle {
   supplier_id: number;
   depot_id: number;
   image_url?: string | null;
+  status: 'AVAILABLE' | 'RESERVED';
 }
 
-export type CreateVehicleInput = Omit<AdminVehicle, 'id'>;
+export type CreateVehicleInput = Omit<AdminVehicle, 'id' | 'status'> & {
+  status?: AdminVehicle['status'];
+};
 
 export interface AdminDepot {
   id: string;

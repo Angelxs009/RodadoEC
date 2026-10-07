@@ -1,6 +1,11 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { ColumnNumericTransformer } from '../../../common/transformers/column-numeric.transformer';
 
+export enum VehicleStatus {
+  AVAILABLE = 'AVAILABLE',
+  RESERVED = 'RESERVED',
+}
+
 @Entity('autos_vehicles')
 export class Vehicle {
   @PrimaryGeneratedColumn('uuid')
@@ -45,4 +50,9 @@ export class Vehicle {
 
   @Column({ type: 'varchar', length: 300, nullable: true })
   image_url: string | null;
+
+  // RESERVED = tiene una reserva activa; no se puede volver a reservar hasta que
+  // el admin (o la cancelación de la orden) lo devuelva a AVAILABLE.
+  @Column({ type: 'varchar', length: 20, default: VehicleStatus.AVAILABLE })
+  status: VehicleStatus;
 }

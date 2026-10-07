@@ -136,10 +136,25 @@ export function VehicleDetailPage() {
           </div>
         </Card>
 
+        {!result.available && (
+          <div
+            role="alert"
+            className="rounded-md border border-danger-600/30 bg-danger-50 px-4 py-3 text-sm font-medium text-danger-600"
+          >
+            Este auto ya está reservado y no estará disponible hasta que el administrador lo libere.
+          </div>
+        )}
+
         {error && <ErrorState message={error} onRetry={handleContinue} />}
 
-        <Button size="lg" loading={loading} onClick={handleContinue} className="self-start px-10">
-          Continuar con la reserva
+        <Button
+          size="lg"
+          loading={loading}
+          disabled={!result.available}
+          onClick={handleContinue}
+          className="self-start px-10"
+        >
+          {result.available ? 'Continuar con la reserva' : 'Auto reservado'}
         </Button>
       </div>
     </PageContainer>

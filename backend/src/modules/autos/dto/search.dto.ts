@@ -80,6 +80,9 @@ export class CarSearchResultDto {
 
   @ApiProperty()
   supplier_id: number;
+
+  @ApiProperty({ description: 'Extra no contractual: false si el auto ya está reservado.' })
+  available: boolean;
 }
 
 export class CarSearchResponseDto {

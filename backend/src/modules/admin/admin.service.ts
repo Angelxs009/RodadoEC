@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Depot } from '../autos/entities/depot.entity';
 import { Order, OrderStatus } from '../autos/entities/order.entity';
-import { Vehicle } from '../autos/entities/vehicle.entity';
+import { Vehicle, VehicleStatus } from '../autos/entities/vehicle.entity';
 import { CreateDepotAdminDto, UpdateDepotAdminDto } from './dto/depot-admin.dto';
 import { CreateVehicleAdminDto, UpdateVehicleAdminDto } from './dto/vehicle-admin.dto';
 
@@ -29,6 +29,13 @@ export class AdminService {
     const vehicle = await this.vehicleRepository.findOneBy({ id });
     if (!vehicle) throw new NotFoundException(`Vehículo "${id}" no encontrado`);
     Object.assign(vehicle, dto);
+    return this.vehicleRepository.save(vehicle);
+  }
+
+  async setVehicleStatus(id: string, status: VehicleStatus): Promise<Vehicle> {
+    const vehicle = await this.vehicleRepository.findOneBy({ id });
+    if (!vehicle) throw new NotFoundException(`Vehículo "${id}" no encontrado`);
+    vehicle.status = status;
     return this.vehicleRepository.save(vehicle);
   }
 

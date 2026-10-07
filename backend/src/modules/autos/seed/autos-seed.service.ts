@@ -50,14 +50,19 @@ export class AutosSeedService implements OnModuleInit {
   }
 
   private async seedVehicles(): Promise<void> {
-    if ((await this.vehicleRepository.count()) === 0) {
+    // Inserta solo los que faltan (por vehicle_id): así el catálogo base se completa
+    // también en bases ya sembradas, sin pisar ediciones hechas desde el admin.
+    const existing = new Set(
+      (await this.vehicleRepository.find({ select: { vehicle_id: true } })).map((v) => v.vehicle_id),
+    );
+    const missing = MOCK_VEHICLES.filter((v) => !existing.has(v.vehicle_id));
+    if (missing.length > 0) {
       await this.vehicleRepository.save(
-        MOCK_VEHICLES.map((v) =>
+        missing.map((v) =>
           this.vehicleRepository.create({ ...v, image_url: `/cars/${v.vehicle_id}.jpg` }),
         ),
       );
-      this.logger.log(`Sembrados ${MOCK_VEHICLES.length} vehículos`);
-      return;
+      this.logger.log(`Sembrados ${missing.length} vehículos nuevos`);
     }
 
     // Backfill: vehículos creados antes de existir image_url

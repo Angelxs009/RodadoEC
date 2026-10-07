@@ -1,12 +1,14 @@
 import type {
   CarDetailsResponse,
   CarSearchRequest,
+  CardInput,
   CarSearchResponse,
   DriverDetails,
   OrderDetail,
   OrderHoldResponse,
   OrderPreviewResponse,
   OrderStatus,
+  PaymentResponse,
   ProblemDetails,
   WebhookEvent,
   WebhookSubscription,
@@ -151,6 +153,9 @@ export const autosApi = {
     extras?: string[];
   }) => request<OrderPreviewResponse>('/orders/preview', { body: payload, auth: true }),
 
+  pay: (payload: { order_preview_id: string; card: CardInput }) =>
+    request<PaymentResponse>('/payments', { body: payload, auth: true }),
+
   createOrder: (payload: {
     order_preview_id: string;
     payment_reference: string;
@@ -204,6 +209,10 @@ export const adminApi = {
       body: payload,
       adminAuth: true,
     }),
+  releaseVehicle: (id: string) =>
+    request<AdminVehicle>(`/admin/vehicles/${id}/release`, { adminAuth: true }),
+  reserveVehicle: (id: string) =>
+    request<AdminVehicle>(`/admin/vehicles/${id}/reserve`, { adminAuth: true }),
   deleteVehicle: (id: string) =>
     request<void>(`/admin/vehicles/${id}`, { method: 'DELETE', adminAuth: true }),
 

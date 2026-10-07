@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { OrderStatus } from '../autos/entities/order.entity';
+import { VehicleStatus } from '../autos/entities/vehicle.entity';
 import { AdminAuthGuard } from './auth/admin-auth.guard';
 import { AdminService } from './admin.service';
 import { CreateDepotAdminDto, UpdateDepotAdminDto } from './dto/depot-admin.dto';
@@ -37,6 +38,18 @@ export class AdminController {
   @ApiOperation({ summary: 'Actualizar un vehículo existente' })
   updateVehicle(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateVehicleAdminDto) {
     return this.adminService.updateVehicle(id, dto);
+  }
+
+  @Post('vehicles/:id/release')
+  @ApiOperation({ summary: 'Marcar un vehículo como DISPONIBLE (libera una reserva)' })
+  releaseVehicle(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.setVehicleStatus(id, VehicleStatus.AVAILABLE);
+  }
+
+  @Post('vehicles/:id/reserve')
+  @ApiOperation({ summary: 'Marcar un vehículo como RESERVADO (bloquea nuevas reservas)' })
+  reserveVehicle(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.setVehicleStatus(id, VehicleStatus.RESERVED);
   }
 
   @Delete('vehicles/:id')

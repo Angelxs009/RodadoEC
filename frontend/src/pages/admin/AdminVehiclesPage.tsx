@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Input } from '../../components/Input';
@@ -38,6 +39,7 @@ export function AdminVehiclesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<CreateVehicleInput>(EMPTY_FORM);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
@@ -70,7 +72,7 @@ export function AdminVehiclesPage() {
   }
 
   function startEdit(vehicle: AdminVehicle) {
-    const { id: _id, ...rest } = vehicle;
+    const { id: _id, status: _status, ...rest } = vehicle;
     setEditingId(vehicle.id);
     setEditForm(rest);
   }
@@ -87,6 +89,20 @@ export function AdminVehiclesPage() {
       setError(err instanceof ApiError ? err.message : 'No se pudo actualizar el vehículo.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleToggleStatus(v: AdminVehicle) {
+    setTogglingId(v.id);
+    setError(null);
+    try {
+      if (v.status === 'RESERVED') await adminApi.releaseVehicle(v.id);
+      else await adminApi.reserveVehicle(v.id);
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'No se pudo cambiar el estado del vehículo.');
+    } finally {
+      setTogglingId(null);
     }
   }
 
@@ -221,13 +237,14 @@ export function AdminVehiclesPage() {
             <Th>Tipo</Th>
             <Th>Precio/día</Th>
             <Th>Depot</Th>
+            <Th>Estado</Th>
             <Th></Th>
           </TableHead>
           <TableBody>
             {vehicles.map((v) =>
               editingId === v.id ? (
                 <Tr key={v.id}>
-                  <Td colSpan={6} className="!p-2">
+                  <Td colSpan={7} className="!p-2">
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                       <input
                         className="h-9 rounded-sm border border-neutral-300 px-2 text-sm"
@@ -291,7 +308,20 @@ export function AdminVehiclesPage() {
                   <Td>${v.price_per_day.toFixed(2)}</Td>
                   <Td>{v.depot_id}</Td>
                   <Td>
+                    <Badge tone={v.status === 'RESERVED' ? 'danger' : 'success'}>
+                      {v.status === 'RESERVED' ? 'Reservado' : 'Disponible'}
+                    </Badge>
+                  </Td>
+                  <Td>
                     <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant={v.status === 'RESERVED' ? 'secondary' : 'ghost'}
+                        loading={togglingId === v.id}
+                        onClick={() => handleToggleStatus(v)}
+                      >
+                        {v.status === 'RESERVED' ? 'Marcar disponible' : 'Marcar reservado'}
+                      </Button>
                       <Button size="sm" variant="ghost" onClick={() => startEdit(v)}>
                         Editar
                       </Button>

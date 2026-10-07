@@ -1,8 +1,10 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { VehicleStatus } from '../../autos/entities/vehicle.entity';
 import { IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, Min, MinLength } from 'class-validator';
 
 const CAR_TYPES = ['Compacto', 'Sedan', 'SUV'];
 const TRANSMISSIONS = ['Manual', 'Automatica'];
+const VEHICLE_STATUSES = ['AVAILABLE', 'RESERVED'];
 
 export class CreateVehicleAdminDto {
   @ApiProperty({ example: 'veh-009' })
@@ -60,6 +62,14 @@ export class CreateVehicleAdminDto {
   @IsOptional()
   @IsString()
   image_url?: string;
+
+  @ApiPropertyOptional({
+    enum: VEHICLE_STATUSES,
+    description: 'RESERVED bloquea el auto para nuevas reservas hasta que el admin lo ponga AVAILABLE.',
+  })
+  @IsOptional()
+  @IsIn(VEHICLE_STATUSES)
+  status?: VehicleStatus;
 }
 
 export class UpdateVehicleAdminDto extends PartialType(CreateVehicleAdminDto) {}

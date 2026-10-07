@@ -26,6 +26,8 @@ export interface CarSearchResult {
   vehicle_id: string;
   price: number;
   supplier_id: number;
+  /** false si el auto ya está reservado (no se puede volver a reservar). */
+  available: boolean;
 }
 
 export interface CarSearchResponse {
@@ -43,6 +45,7 @@ export interface CarDetailsResult {
   bag_capacity: number;
   seats: number;
   image_url?: string | null;
+  status?: 'AVAILABLE' | 'RESERVED';
 }
 
 export interface CarDetailsResponse {
@@ -86,6 +89,24 @@ export interface OrderDetail {
   currency: string;
   creation_date: string;
   _links: Record<string, string>;
+}
+
+export interface CardInput {
+  holder_name: string;
+  number: string;
+  expiry_month: number;
+  expiry_year: number;
+  cvv: string;
+}
+
+export interface PaymentResponse {
+  payment_reference: string;
+  status: 'APPROVED' | 'DECLINED' | 'REFUNDED';
+  amount: number;
+  currency: string;
+  card_brand: string;
+  card_last4: string;
+  created_at: string;
 }
 
 export interface ProblemDetails {

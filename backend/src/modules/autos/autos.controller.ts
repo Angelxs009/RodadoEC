@@ -16,6 +16,8 @@ import { OrderCreateRequestDto } from './dto/order-create.dto';
 import { OrderDetailDto } from './dto/order-detail.dto';
 import { OrderHoldRequestDto, OrderHoldResponseDto } from './dto/order-hold.dto';
 import { OrderModifyRequestDto } from './dto/order-modify.dto';
+import { PaymentRequestDto, PaymentResponseDto } from './dto/payment.dto';
+import { PaymentsService } from './payments.service';
 import { OrderPreviewRequestDto, OrderPreviewResponseDto } from './dto/order-preview.dto';
 import { CarSearchRequestDto, CarSearchResponseDto } from './dto/search.dto';
 import { SuppliersRequestDto, SuppliersResponseDto } from './dto/suppliers.dto';
@@ -29,6 +31,7 @@ import { WebhookSubscriptionDto } from './dto/webhook.dto';
 export class AutosController {
   constructor(
     private readonly autosService: AutosService,
+    private readonly paymentsService: PaymentsService,
     private readonly customerTokenService: CustomerTokenService,
   ) {}
 
@@ -44,7 +47,7 @@ export class AutosController {
   @ApiResponse({ status: 400, description: 'Petición inválida' })
   @ApiResponse({ status: 429, description: 'Demasiadas peticiones' })
   @HttpCode(HttpStatus.OK)
-  @Header('Cache-Control', 'public, max-age=300')
+  @Header('Cache-Control', 'no-store')
   search(
     @Headers('X-Affiliate-Id') affiliateId: string,
     @Body() searchRequest: CarSearchRequestDto,
@@ -58,7 +61,7 @@ export class AutosController {
   @ApiHeader({ name: 'X-Affiliate-Id', required: true })
   @ApiResponse({ status: 200, description: 'Detalles de los vehículos solicitados', type: CarDetailsResponseDto })
   @HttpCode(HttpStatus.OK)
-  @Header('Cache-Control', 'public, max-age=300')
+  @Header('Cache-Control', 'no-store')
   getDetails(
     @Headers('X-Affiliate-Id') affiliateId: string,
     @Body() detailsRequest: CarDetailsRequestDto,
@@ -141,7 +144,7 @@ export class AutosController {
   @ApiResponse({ status: 400, description: 'Petición inválida' })
   @ApiResponse({ status: 409, description: 'Conflicto (auto no disponible)' })
   @HttpCode(HttpStatus.OK)
-  holdOrder(@Body() holdRequest: OrderHoldRequestDto): OrderHoldResponseDto {
+  holdOrder(@Body() holdRequest: OrderHoldRequestDto): Promise<OrderHoldResponseDto> {
     return this.autosService.holdOrder(holdRequest);
   }
 
@@ -150,8 +153,23 @@ export class AutosController {
   @ApiOperation({ summary: 'Previsualizar la orden de renta antes de confirmar' })
   @ApiResponse({ status: 200, description: 'Detalles de la orden previsualizada y precios finales', type: OrderPreviewResponseDto })
   @HttpCode(HttpStatus.OK)
-  previewOrder(@Body() previewRequest: OrderPreviewRequestDto): OrderPreviewResponseDto {
+  previewOrder(@Body() previewRequest: OrderPreviewRequestDto): Promise<OrderPreviewResponseDto> {
     return this.autosService.previewOrder(previewRequest);
+  }
+
+  @Post('payments')
+  @ApiTags('Pagos (simulado)')
+  @ApiOperation({
+    summary: 'Procesar un pago simulado (obligatorio antes de crear la orden)',
+    description:
+      'Simula una pasarela de pago. El monto se toma del order_preview_id. Si queda APPROVED, usa payment_reference en /orders/create. Tarjetas de prueba: 4242424242424242 aprobada; 4000000000000002 rechazada (fondos insuficientes).',
+  })
+  @ApiResponse({ status: 201, description: 'Pago aprobado', type: PaymentResponseDto })
+  @ApiResponse({ status: 402, description: 'Pago rechazado' })
+  @ApiResponse({ status: 409, description: 'Vehículo ya reservado' })
+  @HttpCode(HttpStatus.CREATED)
+  pay(@Body() paymentRequest: PaymentRequestDto): Promise<PaymentResponseDto> {
+    return this.paymentsService.charge(paymentRequest);
   }
 
   @Post('orders/create')
