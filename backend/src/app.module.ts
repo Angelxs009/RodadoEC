@@ -6,6 +6,7 @@ import { CommonModule } from './common/common.module';
 // import { AlojamientosModule } from './modules/alojamientos/alojamientos.module';
 import { AutosModule } from './modules/autos/autos.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { CustomersModule } from './modules/customers/customers.module';
 // import { AtraccionesModule } from './modules/atracciones/atracciones.module';
 // import { VuelosModule } from './modules/vuelos/vuelos.module';
 
@@ -44,6 +45,7 @@ import { AdminModule } from './modules/admin/admin.module';
     // AlojamientosModule,
     AutosModule,
     AdminModule,
+    CustomersModule,
     // AtraccionesModule,
     // VuelosModule,
   ],

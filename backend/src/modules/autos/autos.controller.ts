@@ -7,6 +7,7 @@ import {
 } from '@nestjs/swagger';
 import { RequireScopes, ScopesGuard } from '../../common/guards/scopes.guard';
 import { IdempotencyKeyGuard } from '../../common/guards/idempotency-key.guard';
+import { CustomerTokenService } from '../customers/auth/customer-token.service';
 import { AutosService } from './autos.service';
 import { CarConstantsRequestDto, CarConstantsResponseDto } from './dto/constants.dto';
 import { DepotScoresRequestDto, DepotScoresResponseDto } from './dto/depot-scores.dto';
@@ -28,7 +29,10 @@ import { WebhookSubscriptionDto } from './dto/webhook.dto';
 @Controller()
 @UseGuards(ScopesGuard)
 export class AutosController {
-  constructor(private readonly autosService: AutosService) {}
+  constructor(
+    private readonly autosService: AutosService,
+    private readonly customerTokenService: CustomerTokenService,
+  ) {}
 
   // ══════════════════════════════════════════════════════════════════════════
   //  Búsqueda y Catálogo
@@ -169,9 +173,16 @@ export class AutosController {
   @UseGuards(IdempotencyKeyGuard)
   createOrder(
     @Headers('Idempotency-Key') idempotencyKey: string,
+    @Headers('Authorization') authHeader: string | undefined,
     @Body() createRequest: OrderCreateRequestDto,
   ): Promise<OrderDetailDto> {
-    return this.autosService.createOrder(createRequest);
+    // Si el cliente inició sesión, el frontend manda su token real de cliente
+    // en este mismo header (en vez del Bearer "dev-token-autos" anónimo que
+    // ScopesGuard igual acepta). Si no es un token de cliente válido, la
+    // reserva sigue como invitado (guest checkout), sin romper el contrato.
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    const customerId = this.customerTokenService.verify(token);
+    return this.autosService.createOrder(createRequest, customerId);
   }
 
   @Get('orders/:orderId')

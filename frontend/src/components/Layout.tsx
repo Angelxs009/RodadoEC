@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { CarIcon, SettingsIcon } from './icons';
+import { useCustomerAuth } from '../lib/customer-auth-context';
+import { CarIcon, SettingsIcon, UserIcon } from './icons';
 
 export function Layout({ children }: { children: ReactNode }) {
+  const { profile, loading } = useCustomerAuth();
+
   return (
     <div className="min-h-screen bg-neutral-50">
       <header className="bg-neutral-900">
@@ -16,6 +19,15 @@ export function Layout({ children }: { children: ReactNode }) {
             </span>
           </Link>
           <nav className="flex items-center gap-2">
+            {!loading && (
+              <Link
+                to={profile ? '/cuenta' : '/cuenta/login'}
+                className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-white"
+              >
+                <UserIcon className="size-4" />
+                {profile ? profile.first_name : 'Ingresar'}
+              </Link>
+            )}
             <Link
               to="/admin"
               className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-white"

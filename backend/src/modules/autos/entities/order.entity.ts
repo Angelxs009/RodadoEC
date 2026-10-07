@@ -43,6 +43,12 @@ export class Order {
   @Column({ type: 'varchar', length: 100, nullable: true })
   payment_reference: string | null;
 
+  // Sin FK formal a autos_customers para no acoplar el módulo Autos con Customers
+  // (igual que vehicle_details/route_details, que se guardan desnormalizados).
+  // null = reserva de invitado (guest checkout), sigue soportado.
+  @Column({ type: 'uuid', nullable: true })
+  customer_id: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   creation_date: Date;
 }

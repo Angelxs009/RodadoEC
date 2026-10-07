@@ -18,6 +18,13 @@ import type {
   CreateDepotInput,
   CreateVehicleInput,
 } from '../types/admin';
+import type {
+  CustomerAuthResponse,
+  CustomerOrder,
+  CustomerProfile,
+  LoginCustomerInput,
+  RegisterCustomerInput,
+} from '../types/customer';
 
 // En dev, el proxy de Vite reenvía '/api' al backend local (ver vite.config.ts).
 // En producción se apunta directo a la API desplegada vía VITE_API_URL (ver .env.production.example).
@@ -25,6 +32,7 @@ const BASE_URL = `${import.meta.env.VITE_API_URL ?? ''}/api/v1`;
 export const SWAGGER_URL = `${import.meta.env.VITE_API_URL ?? ''}/api/docs`;
 const AFFILIATE_ID = '1001';
 const ADMIN_TOKEN_KEY = 'rodadoec_admin_token';
+const CUSTOMER_TOKEN_KEY = 'rodadoec_customer_token';
 
 export function getAdminToken(): string | null {
   try {
@@ -38,6 +46,23 @@ export function setAdminToken(token: string | null) {
   try {
     if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
     else localStorage.removeItem(ADMIN_TOKEN_KEY);
+  } catch {
+    // localStorage puede fallar (modo privado, storage bloqueado); no es crítico.
+  }
+}
+
+export function getCustomerToken(): string | null {
+  try {
+    return localStorage.getItem(CUSTOMER_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setCustomerToken(token: string | null) {
+  try {
+    if (token) localStorage.setItem(CUSTOMER_TOKEN_KEY, token);
+    else localStorage.removeItem(CUSTOMER_TOKEN_KEY);
   } catch {
     // localStorage puede fallar (modo privado, storage bloqueado); no es crítico.
   }
@@ -60,6 +85,7 @@ async function request<T>(
     auth?: boolean;
     idempotent?: boolean;
     adminAuth?: boolean;
+    customerAuth?: boolean;
   } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
@@ -68,10 +94,18 @@ async function request<T>(
   };
 
   if (options.auth) {
-    headers.Authorization = 'Bearer dev-token-autos';
+    // Si el cliente inició sesión, se manda su token real (el backend lo usa
+    // para ligar la reserva a su cuenta); si no, el Bearer anónimo de siempre
+    // (el contrato solo exige que exista el header, no valida su contenido).
+    const customerToken = getCustomerToken();
+    headers.Authorization = customerToken ? `Bearer ${customerToken}` : 'Bearer dev-token-autos';
   }
   if (options.adminAuth) {
     const token = getAdminToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+  if (options.customerAuth) {
+    const token = getCustomerToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
   if (options.idempotent) {
@@ -91,6 +125,9 @@ async function request<T>(
     if (options.adminAuth && res.status === 401) {
       // Sesión de admin inválida/expirada: se limpia para forzar login de nuevo.
       setAdminToken(null);
+    }
+    if (options.customerAuth && res.status === 401) {
+      setCustomerToken(null);
     }
     throw new ApiError(data as ProblemDetails);
   }
@@ -187,4 +224,16 @@ export const adminApi = {
       method: 'GET',
       adminAuth: true,
     }),
+};
+
+export const customerAuthApi = {
+  register: (payload: RegisterCustomerInput) =>
+    request<CustomerAuthResponse>('/auth/register', { body: payload }),
+  login: (payload: LoginCustomerInput) =>
+    request<CustomerAuthResponse>('/auth/login', { body: payload }),
+  me: () => request<CustomerProfile>('/auth/me', { method: 'GET', customerAuth: true }),
+};
+
+export const customerApi = {
+  myOrders: () => request<CustomerOrder[]>('/me/orders', { method: 'GET', customerAuth: true }),
 };

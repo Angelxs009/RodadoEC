@@ -7,14 +7,16 @@ import { EmptyState, ErrorState } from '../components/StateViews';
 import { Input } from '../components/Input';
 import { ApiError, autosApi } from '../lib/api';
 import { useBooking } from '../lib/booking-context';
+import { useCustomerAuth } from '../lib/customer-auth-context';
 
 export function CheckoutPage() {
   const navigate = useNavigate();
   const { previewId, previewTotal, reset } = useBooking();
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const { profile } = useCustomerAuth();
+  const [firstName, setFirstName] = useState(profile?.first_name ?? '');
+  const [lastName, setLastName] = useState(profile?.last_name ?? '');
+  const [email, setEmail] = useState(profile?.email ?? '');
+  const [phone, setPhone] = useState(profile?.phone_number ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,6 +68,13 @@ export function CheckoutPage() {
       <h1 className="display-heading text-2xl text-neutral-900 sm:text-3xl">
         Datos del conductor
       </h1>
+
+      {profile && (
+        <p className="text-sm text-neutral-500">
+          Reservando como <span className="font-semibold text-neutral-800">{profile.email}</span>
+          . Esta reserva quedará guardada en tu cuenta.
+        </p>
+      )}
 
       <Card className="flex flex-col gap-6">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">

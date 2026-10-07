@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AutosService } from './autos.service';
 import { AutosController } from './autos.controller';
 import { CommonModule } from '../../common/common.module';
+import { CustomersModule } from '../customers/customers.module';
 import { TtlCacheService } from './cache/ttl-cache.service';
 import { Depot } from './entities/depot.entity';
 import { Order } from './entities/order.entity';
@@ -16,6 +17,7 @@ import { WebhooksDispatcherService } from './webhooks/webhooks-dispatcher.servic
   imports: [
     TypeOrmModule.forFeature([Order, WebhookSubscription, Vehicle, Depot, Supplier]),
     CommonModule,
+    CustomersModule, // CustomerTokenService: liga la orden al cliente logueado, si lo hay
   ],
   controllers: [AutosController],
   providers: [AutosService, TtlCacheService, AutosSeedService, WebhooksDispatcherService],

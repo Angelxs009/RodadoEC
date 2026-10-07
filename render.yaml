@@ -25,3 +25,5 @@ services:
         sync: false
       - key: ADMIN_JWT_SECRET
         generateValue: true
+      - key: CUSTOMER_JWT_SECRET
+        generateValue: true

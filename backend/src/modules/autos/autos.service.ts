@@ -250,7 +250,10 @@ export class AutosService {
     };
   }
 
-  async createOrder(createRequest: OrderCreateRequestDto): Promise<OrderDetailDto> {
+  async createOrder(
+    createRequest: OrderCreateRequestDto,
+    customerId: string | null = null,
+  ): Promise<OrderDetailDto> {
     const preview = this.cache.get<CachedPreview>(`preview:${createRequest.order_preview_id}`);
     if (!preview) {
       throw bookingNotConfirmed(createRequest.order_preview_id);
@@ -271,6 +274,7 @@ export class AutosService {
       total_price: preview.total_price,
       currency: preview.currency,
       payment_reference: createRequest.payment_reference,
+      customer_id: customerId,
     });
 
     const saved = await this.orderRepository.save(order);
