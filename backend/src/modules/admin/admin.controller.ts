@@ -16,8 +16,6 @@ import { CreateVehicleAdminDto, UpdateVehicleAdminDto } from './dto/vehicle-admi
  */
 @Controller('admin')
 @ApiTags('Administración')
-@UseGuards(AdminAuthGuard)
-@ApiBearerAuth()
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
