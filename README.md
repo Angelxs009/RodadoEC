@@ -77,6 +77,10 @@ Los estados efímeros del flujo de reserva (`search_token`, `hold_id`, `order_pr
 
 Cada vehículo tiene `min_driver_age` (18 años por defecto, la mayoría de edad en Ecuador; editable desde el admin para subirla en autos específicos). Si `driver.age` de la búsqueda es menor, `hold`, `preview` y `payments` responden 409 `DRIVER_AGE_RESTRICTION` (código definido en el contrato). `/search` y `/details` devuelven `min_driver_age`; la web muestra la insignia "Desde N años" y deshabilita esos autos.
 
+### 4.1.3 Agencias y ciudades
+
+Hay 6 agencias (2 por ciudad: Quito, Guayaquil y Cuenca) y cada auto pertenece a una (`depot_id`). `/search` filtra por la ubicación de recogida: `route.pickup.location.city_id` (ciudad) o `.airport` (código IATA); sin ubicación devuelve todo el catálogo. Los resultados incluyen `depot_id`, y la web muestra la agencia y su puntuación en la portada, los resultados (con filtro por agencia), el detalle del auto y la confirmación de la reserva (recogida y entrega).
+
 ### 4.2 Backoffice de administración (no forma parte del contrato)
 
 | Método | Ruta | Descripción |

@@ -36,9 +36,12 @@ export class AutosSeedService implements OnModuleInit {
   }
 
   private async seedDepots(): Promise<void> {
-    if ((await this.depotRepository.count()) > 0) return;
+    // Solo inserta las agencias que faltan (por depot_id): no pisa ediciones del admin.
+    const existing = new Set((await this.depotRepository.find()).map((d) => d.depot_id));
+    const missing = MOCK_DEPOTS.filter((d) => !existing.has(d.depot_id));
+    if (missing.length === 0) return;
     await this.depotRepository.save(
-      MOCK_DEPOTS.map((d) =>
+      missing.map((d) =>
         this.depotRepository.create({
           ...d,
           airport: d.airport ?? null,
@@ -46,7 +49,7 @@ export class AutosSeedService implements OnModuleInit {
         }),
       ),
     );
-    this.logger.log(`Sembrados ${MOCK_DEPOTS.length} depots`);
+    this.logger.log(`Sembradas ${missing.length} agencias nuevas`);
   }
 
   private async seedVehicles(): Promise<void> {

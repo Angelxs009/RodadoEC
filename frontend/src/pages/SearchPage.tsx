@@ -6,23 +6,21 @@ import { Input } from '../components/Input';
 import { Select } from '../components/Select';
 import {
   BagIcon,
+  BuildingIcon,
   CarIcon,
   DoorIcon,
   MapPinIcon,
+  PlaneIcon,
   ShieldCheckIcon,
   SparkleIcon,
+  StarIcon,
   UsersIcon,
 } from '../components/icons';
 import { VehicleImage } from '../components/VehicleImage';
 import { ApiError, autosApi } from '../lib/api';
 import { useBooking } from '../lib/booking-context';
+import { CITIES, useAgencies } from '../lib/depots';
 import type { CarDetailsResult } from '../types/autos';
-
-const CITIES = [
-  { id: 1, label: 'Quito' },
-  { id: 2, label: 'Guayaquil' },
-  { id: 3, label: 'Cuenca' },
-];
 
 const FEATURES = [
   {
@@ -59,6 +57,12 @@ export function SearchPage() {
   const [dropoffDate, setDropoffDate] = useState(defaultDate(6, '10:00'));
   const [driverAge, setDriverAge] = useState(25);
   const [fleet, setFleet] = useState<CarDetailsResult[]>([]);
+  const { agencies } = useAgencies();
+
+  function searchInCity(id: number) {
+    setCityId(id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
   useEffect(() => {
     autosApi
@@ -226,6 +230,70 @@ export function SearchPage() {
                 </div>
               </article>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Agencias por ciudad */}
+      {agencies.length > 0 && (
+        <section className="mx-auto mt-20 w-full max-w-6xl px-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-brand-600">Nuestras agencias</p>
+          <h2 className="display-heading mt-1 text-2xl text-neutral-900 sm:text-3xl">
+            Recoge y entrega cerca de ti
+          </h2>
+          <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-3">
+            {CITIES.map((city, index) => {
+              const cityAgencies = agencies.filter((a) => a.city_id === city.id);
+              if (cityAgencies.length === 0) return null;
+              return (
+                <article
+                  key={city.id}
+                  style={{ animationDelay: `${index * 80}ms` }}
+                  className="fade-up flex flex-col overflow-hidden rounded-md border border-neutral-200 bg-white shadow-sm transition-shadow duration-200 hover:shadow-lg"
+                >
+                  <header className="flex items-center justify-between bg-neutral-900 px-5 py-4 text-white">
+                    <div>
+                      <h3 className="display-heading text-lg">{city.label}</h3>
+                      <p className="text-xs font-medium text-neutral-400">
+                        {cityAgencies.length} {cityAgencies.length === 1 ? 'agencia' : 'agencias'}
+                      </p>
+                    </div>
+                    <BuildingIcon className="size-7 text-brand-500" />
+                  </header>
+                  <ul className="flex flex-1 flex-col divide-y divide-neutral-100">
+                    {cityAgencies.map((a) => (
+                      <li key={a.depot_id} className="flex items-center gap-3 px-5 py-3.5">
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+                          {a.airport ? <PlaneIcon className="size-4" /> : <MapPinIcon className="size-4" />}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-neutral-900" title={a.name}>
+                            {a.name}
+                          </p>
+                        </div>
+                        {a.score !== null && (
+                          <span className="flex shrink-0 items-center gap-1 text-sm font-bold tabular-nums text-neutral-800">
+                            <StarIcon className="size-3.5 text-warning-600" />
+                            {a.score.toFixed(1)}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="border-t border-neutral-100 p-4">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => searchInCity(city.id)}
+                    >
+                      Buscar autos en {city.label}
+                    </Button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
       )}

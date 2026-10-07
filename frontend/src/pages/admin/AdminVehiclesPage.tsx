@@ -8,6 +8,7 @@ import { ErrorState } from '../../components/StateViews';
 import { VehicleImage } from '../../components/VehicleImage';
 import { Table, TableBody, TableHead, Td, Th, Tr } from '../../components/Table';
 import { ApiError, adminApi } from '../../lib/api';
+import { useAgencies } from '../../lib/depots';
 import type { AdminVehicle, CreateVehicleInput } from '../../types/admin';
 
 const CAR_TYPES = ['Compacto', 'Sedan', 'SUV'];
@@ -28,6 +29,7 @@ const EMPTY_FORM: CreateVehicleInput = {
 };
 
 export function AdminVehiclesPage() {
+  const { agencies, byId: agencyById } = useAgencies();
   const [vehicles, setVehicles] = useState<AdminVehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -218,12 +220,17 @@ export function AdminVehiclesPage() {
               value={form.supplier_id}
               onChange={(e) => setForm({ ...form, supplier_id: Number(e.target.value) })}
             />
-            <Input
-              label="Depot ID"
-              type="number"
+            <Select
+              label="Agencia"
               value={form.depot_id}
               onChange={(e) => setForm({ ...form, depot_id: Number(e.target.value) })}
-            />
+            >
+              {agencies.map((a) => (
+                <option key={a.depot_id} value={a.depot_id}>
+                  {a.name}
+                </option>
+              ))}
+            </Select>
             <div className="col-span-2 sm:col-span-4">
               <Input
                 label="URL de la foto (opcional, ej. /cars/veh-009.jpg o https://…)"
@@ -249,7 +256,7 @@ export function AdminVehiclesPage() {
             <Th>Marca / Modelo</Th>
             <Th>Tipo</Th>
             <Th>Precio/día</Th>
-            <Th>Depot</Th>
+            <Th>Agencia</Th>
             <Th>Edad mín.</Th>
             <Th>Estado</Th>
             <Th></Th>
@@ -282,15 +289,20 @@ export function AdminVehiclesPage() {
                         }
                         placeholder="Precio/día"
                       />
-                      <input
-                        className="h-9 rounded-sm border border-neutral-300 px-2 text-sm"
-                        type="number"
+                      <select
+                        className="h-9 rounded-sm border border-neutral-300 bg-white px-2 text-sm"
                         value={editForm.depot_id}
                         onChange={(e) =>
                           setEditForm({ ...editForm, depot_id: Number(e.target.value) })
                         }
-                        placeholder="Depot ID"
-                      />
+                        aria-label="Agencia"
+                      >
+                        {agencies.map((a) => (
+                          <option key={a.depot_id} value={a.depot_id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
                       <div className="flex gap-2">
                         <Button size="sm" loading={saving} onClick={saveEdit}>Guardar</Button>
                         <Button
@@ -320,7 +332,11 @@ export function AdminVehiclesPage() {
                   </Td>
                   <Td>{v.car_type}</Td>
                   <Td>${v.price_per_day.toFixed(2)}</Td>
-                  <Td>{v.depot_id}</Td>
+                  <Td className="max-w-[14rem] truncate">
+                    <span title={agencyById[v.depot_id]?.name}>
+                      {agencyById[v.depot_id]?.name ?? v.depot_id}
+                    </span>
+                  </Td>
                   <Td className="tabular-nums">{v.min_driver_age ?? 18}</Td>
                   <Td>
                     <Badge tone={v.status === 'RESERVED' ? 'danger' : 'success'}>

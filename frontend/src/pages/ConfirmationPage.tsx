@@ -3,11 +3,12 @@ import { Link, useParams } from 'react-router-dom';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { CheckCircleIcon } from '../components/icons';
+import { CalendarIcon, CheckCircleIcon, MapPinIcon, PlaneIcon } from '../components/icons';
 import { PageContainer } from '../components/PageContainer';
 import { ErrorState } from '../components/StateViews';
 import { VehicleImage } from '../components/VehicleImage';
 import { ApiError, autosApi } from '../lib/api';
+import { cityLabel, useAgencies } from '../lib/depots';
 import { EXTRAS_CATALOG } from '../lib/extras-catalog';
 import type { OrderDetail } from '../types/autos';
 
@@ -25,6 +26,7 @@ const STATUS_LABEL = {
 
 export function ConfirmationPage() {
   const { orderId } = useParams<{ orderId: string }>();
+  const { byId: agencyById } = useAgencies();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
@@ -111,6 +113,20 @@ export function ConfirmationPage() {
 
   if (!order) return null;
 
+  const depotId = Number(order.vehicle_details.depot_id);
+  const agency = agencyById[depotId];
+  const AgencyIcon = agency?.airport ? PlaneIcon : MapPinIcon;
+  const dateFmt = new Intl.DateTimeFormat('es-EC', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  });
+  const pickupAt = order.route_details?.pickup?.datetime;
+  const dropoffAt = order.route_details?.dropoff?.datetime;
+
   return (
     <PageContainer>
     <div className="flex max-w-xl flex-col gap-6">
@@ -137,6 +153,36 @@ export function ConfirmationPage() {
           </div>
           <Badge tone={STATUS_TONE[order.status]}>{STATUS_LABEL[order.status]}</Badge>
         </div>
+
+        {(agency || pickupAt) && (
+          <div className="grid grid-cols-1 gap-3 border-t border-neutral-200 pt-4 sm:grid-cols-2">
+            {[
+              { label: 'Recogida', at: pickupAt },
+              { label: 'Entrega', at: dropoffAt },
+            ].map((leg) => (
+              <div key={leg.label} className="flex flex-col gap-1.5 rounded-md bg-neutral-50 p-3">
+                <p className="text-xs font-bold uppercase tracking-widest text-brand-600">{leg.label}</p>
+                {leg.at && (
+                  <p className="flex items-center gap-1.5 text-sm font-semibold capitalize text-neutral-900">
+                    <CalendarIcon className="size-4 text-neutral-400" />
+                    {dateFmt.format(new Date(leg.at))}
+                  </p>
+                )}
+                {agency && (
+                  <p className="flex items-start gap-1.5 text-sm text-neutral-600">
+                    <AgencyIcon className="mt-0.5 size-4 shrink-0 text-neutral-400" />
+                    <span>
+                      {agency.name}
+                      <span className="block text-xs text-neutral-400">
+                        {cityLabel(agency.city_id)}, Ecuador
+                      </span>
+                    </span>
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="flex flex-col gap-1 border-t border-neutral-200 pt-4">
           <div className="flex justify-between text-sm">

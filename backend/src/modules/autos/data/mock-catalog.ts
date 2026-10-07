@@ -34,14 +34,18 @@ export const MOCK_DEPOTS: MockDepot[] = [
   { depot_id: 100, name: 'Aeropuerto Mariscal Sucre (UIO)', city_id: 1, airport: 'UIO' },
   { depot_id: 101, name: 'Centro Histórico Quito', city_id: 1 },
   { depot_id: 200, name: 'Aeropuerto José Joaquín de Olmedo (GYE)', city_id: 2, airport: 'GYE' },
+  { depot_id: 201, name: 'Urdesa — Guayaquil Norte', city_id: 2 },
   { depot_id: 300, name: 'Centro Cuenca', city_id: 3 },
+  { depot_id: 301, name: 'Aeropuerto Mariscal Lamar (CUE)', city_id: 3, airport: 'CUE' },
 ];
 
 export const MOCK_DEPOT_SCORES: Record<number, number> = {
   100: 4.6,
   101: 4.2,
   200: 4.4,
+  201: 4.3,
   300: 4.0,
+  301: 4.1,
 };
 
 export const MOCK_VEHICLES: MockVehicle[] = [
@@ -82,7 +86,7 @@ export const MOCK_VEHICLES: MockVehicle[] = [
     seats: 5,
     price_per_day: 65,
     supplier_id: 2,
-    depot_id: 200,
+    depot_id: 100,
   },
   {
     vehicle_id: 'veh-004',
@@ -160,7 +164,7 @@ export const MOCK_VEHICLES: MockVehicle[] = [
     seats: 5,
     price_per_day: 30,
     supplier_id: 1,
-    depot_id: 100,
+    depot_id: 201,
   },
   {
     vehicle_id: 'veh-010',
@@ -173,7 +177,7 @@ export const MOCK_VEHICLES: MockVehicle[] = [
     seats: 5,
     price_per_day: 58,
     supplier_id: 1,
-    depot_id: 200,
+    depot_id: 101,
   },
   {
     vehicle_id: 'veh-011',
@@ -238,7 +242,7 @@ export const MOCK_VEHICLES: MockVehicle[] = [
     seats: 5,
     price_per_day: 75,
     supplier_id: 3,
-    depot_id: 100,
+    depot_id: 201,
   },
   {
     vehicle_id: 'veh-016',
@@ -303,7 +307,7 @@ export const MOCK_VEHICLES: MockVehicle[] = [
     seats: 5,
     price_per_day: 55,
     supplier_id: 1,
-    depot_id: 101,
+    depot_id: 201,
   },
   {
     vehicle_id: 'veh-021',
@@ -316,7 +320,7 @@ export const MOCK_VEHICLES: MockVehicle[] = [
     seats: 5,
     price_per_day: 42,
     supplier_id: 3,
-    depot_id: 300,
+    depot_id: 301,
   },
   {
     vehicle_id: 'veh-022',
@@ -342,7 +346,7 @@ export const MOCK_VEHICLES: MockVehicle[] = [
     seats: 5,
     price_per_day: 78,
     supplier_id: 2,
-    depot_id: 100,
+    depot_id: 301,
   },
   {
     vehicle_id: 'veh-024',
@@ -355,7 +359,7 @@ export const MOCK_VEHICLES: MockVehicle[] = [
     seats: 4,
     price_per_day: 28,
     supplier_id: 3,
-    depot_id: 101,
+    depot_id: 201,
   },
   {
     vehicle_id: 'veh-025',
@@ -394,7 +398,7 @@ export const MOCK_VEHICLES: MockVehicle[] = [
     seats: 5,
     price_per_day: 50,
     supplier_id: 1,
-    depot_id: 100,
+    depot_id: 301,
   },
   {
     vehicle_id: 'veh-028',
@@ -407,7 +411,7 @@ export const MOCK_VEHICLES: MockVehicle[] = [
     seats: 5,
     price_per_day: 31,
     supplier_id: 3,
-    depot_id: 101,
+    depot_id: 201,
   },
   {
     vehicle_id: 'veh-029',
@@ -433,7 +437,7 @@ export const MOCK_VEHICLES: MockVehicle[] = [
     seats: 5,
     price_per_day: 68,
     supplier_id: 1,
-    depot_id: 300,
+    depot_id: 100,
   },
   {
     vehicle_id: 'veh-031',
@@ -446,7 +450,7 @@ export const MOCK_VEHICLES: MockVehicle[] = [
     seats: 5,
     price_per_day: 29,
     supplier_id: 3,
-    depot_id: 100,
+    depot_id: 301,
   },
 ];
 

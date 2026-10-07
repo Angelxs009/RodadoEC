@@ -30,6 +30,8 @@ export interface CarSearchResult {
   available: boolean;
   /** Edad mínima del conductor para este auto. */
   min_driver_age: number;
+  /** Agencia (depot) donde está el auto. */
+  depot_id: number;
 }
 
 export interface CarSearchResponse {
@@ -49,6 +51,7 @@ export interface CarDetailsResult {
   image_url?: string | null;
   status?: 'AVAILABLE' | 'RESERVED';
   min_driver_age?: number;
+  depot_id?: number;
 }
 
 export interface CarDetailsResponse {
@@ -127,4 +130,19 @@ export interface WebhookSubscription {
   url: string;
   events: WebhookEvent[];
   secret?: string | null;
+}
+
+export interface DepotsResponse {
+  request_id: string;
+  data: { depot_id: number; name: string; location: LocationPoint }[];
+}
+
+export interface DepotScoresResponse {
+  request_id: string;
+  data: { depot_id: number; score: number }[];
+}
+
+export interface SuppliersResponse {
+  request_id: string;
+  data: { supplier_id: number; name: string }[];
 }

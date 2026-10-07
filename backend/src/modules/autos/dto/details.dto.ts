@@ -51,6 +51,9 @@ export class CarDetailsResultDto {
 
   @ApiPropertyOptional({ description: 'Extra no contractual: edad mínima del conductor.' })
   min_driver_age?: number;
+
+  @ApiPropertyOptional({ description: 'Extra no contractual: agencia (depot) donde está el auto.' })
+  depot_id?: number;
 }
 
 export class CarDetailsResponseDto {

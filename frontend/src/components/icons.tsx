@@ -184,3 +184,30 @@ export function LockIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function StarIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props} fill="currentColor" stroke="none">
+      <path d="M12 2.8l2.78 5.63 6.22.9-4.5 4.39 1.06 6.2L12 17.0l-5.56 2.92 1.06-6.2L3 9.33l6.22-.9L12 2.8Z" />
+    </svg>
+  );
+}
+
+export function PlaneIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" />
+    </svg>
+  );
+}
+
+export function BuildingIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4.5 20.5V6.5l7-3v17" />
+      <path d="M11.5 9.5h8v11" />
+      <path d="M2.5 20.5h19" />
+      <path d="M8 9v.01M8 12.5v.01M8 16v.01M15.5 13v.01M15.5 16.5v.01" strokeWidth="2.4" />
+    </svg>
+  );
+}

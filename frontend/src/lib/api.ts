@@ -3,6 +3,8 @@ import type {
   CarSearchRequest,
   CardInput,
   CarSearchResponse,
+  DepotScoresResponse,
+  DepotsResponse,
   DriverDetails,
   OrderDetail,
   OrderHoldResponse,
@@ -10,6 +12,7 @@ import type {
   OrderStatus,
   PaymentResponse,
   ProblemDetails,
+  SuppliersResponse,
   WebhookEvent,
   WebhookSubscription,
 } from '../types/autos';
@@ -145,6 +148,12 @@ export const autosApi = {
     request<CarSearchResponse>('/search', { body: payload }),
 
   details: () => request<CarDetailsResponse>('/details', { body: {} }),
+
+  depots: () => request<DepotsResponse>('/depots', { body: {} }),
+
+  suppliers: () => request<SuppliersResponse>('/suppliers', { body: {} }),
+
+  depotScores: () => request<DepotScoresResponse>('/depots/reviews/scores', { body: {} }),
 
   hold: (payload: { vehicle_id: string; search_token: string }) =>
     request<OrderHoldResponse>('/orders/hold', { body: payload, auth: true }),

@@ -102,6 +102,21 @@ export class AutosService {
       where.transmission = In(searchRequest.filters.transmission);
     }
 
+    // La agencia de recogida manda: solo se ofrecen autos de las agencias de la ciudad
+    // (o del aeropuerto) elegida. Sin ubicación, se devuelve todo el catálogo.
+    const pickup = searchRequest.route.pickup.location;
+    if (pickup?.airport || pickup?.city_id) {
+      const depots = await this.depotRepository.find();
+      const ids = depots
+        .filter((d) =>
+          pickup.airport
+            ? d.airport?.toUpperCase() === pickup.airport.toUpperCase()
+            : d.city_id === pickup.city_id,
+        )
+        .map((d) => d.depot_id);
+      where.depot_id = In(ids);
+    }
+
     const limit = searchRequest.maximum_results ?? 100;
     const found = await this.vehicleRepository.find({ where, take: limit });
     // Los disponibles primero; los reservados se muestran igual, marcados como no disponibles.
@@ -123,6 +138,7 @@ export class AutosService {
         supplier_id: v.supplier_id,
         available: v.status === VehicleStatus.AVAILABLE,
         min_driver_age: minDriverAge(v),
+        depot_id: v.depot_id,
       })),
       metadata: { total_results: vehicles.length, next_page: null },
       search_token,
@@ -143,6 +159,7 @@ export class AutosService {
         image_url: v.image_url,
         status: v.status,
         min_driver_age: minDriverAge(v),
+        depot_id: v.depot_id,
       })),
     };
   }

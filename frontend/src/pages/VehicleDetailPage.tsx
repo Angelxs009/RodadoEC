@@ -3,18 +3,30 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { ArrowLeftIcon, BagIcon, DoorIcon, UsersIcon } from '../components/icons';
+import {
+  ArrowLeftIcon,
+  BagIcon,
+  DoorIcon,
+  MapPinIcon,
+  PlaneIcon,
+  StarIcon,
+  UsersIcon,
+} from '../components/icons';
 import { PageContainer } from '../components/PageContainer';
 import { VehicleImage } from '../components/VehicleImage';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import { ApiError, autosApi } from '../lib/api';
 import { useBooking } from '../lib/booking-context';
+import { cityLabel, useAgencies } from '../lib/depots';
+import { useSuppliers } from '../lib/suppliers';
 import { EXTRAS_CATALOG } from '../lib/extras-catalog';
 
 export function VehicleDetailPage() {
   const { vehicleId } = useParams<{ vehicleId: string }>();
   const navigate = useNavigate();
   const { searchRequest, searchResponse, detailsById, setHoldId, setPreview } = useBooking();
+  const { byId: agencyById } = useAgencies();
+  const supplierNames = useSuppliers();
   const [selectedExtras, setSelectedExtras] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +50,8 @@ export function VehicleDetailPage() {
   const driverAge = searchRequest?.driver.age ?? 0;
   const underAge = driverAge < result.min_driver_age;
   const canBook = result.available && !underAge;
+  const agency = agencyById[result.depot_id];
+  const AgencyIcon = agency?.airport ? PlaneIcon : MapPinIcon;
 
   function toggleExtra(id: string) {
     setSelectedExtras((prev) =>
@@ -97,7 +111,7 @@ export function VehicleDetailPage() {
               <p className="display-heading text-xl text-neutral-900">
                 {detail ? `${detail.make} ${detail.model}` : vehicleId}
               </p>
-              <p className="text-sm text-neutral-500">Proveedor #{result.supplier_id}</p>
+              <p className="text-sm text-neutral-500">{supplierNames[result.supplier_id] ?? `Proveedor #${result.supplier_id}`}</p>
               {detail && (
                 <div className="mt-2 flex flex-wrap gap-3 text-xs font-semibold text-neutral-500">
                   <span className="flex items-center gap-1">
@@ -116,6 +130,32 @@ export function VehicleDetailPage() {
           <p className="text-2xl font-extrabold text-brand-600">${result.price.toFixed(2)}</p>
           </div>
         </Card>
+
+        {agency && (
+          <Card className="flex items-center gap-4">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+              <AgencyIcon className="size-6" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold uppercase tracking-widest text-brand-600">
+                Recogida y entrega
+              </p>
+              <p className="truncate text-base font-bold text-neutral-900" title={agency.name}>
+                {agency.name}
+              </p>
+              <p className="text-sm text-neutral-500">{cityLabel(agency.city_id)}, Ecuador</p>
+            </div>
+            {agency.score !== null && (
+              <div className="flex shrink-0 flex-col items-center rounded-md bg-neutral-50 px-3 py-2">
+                <span className="flex items-center gap-1 text-lg font-extrabold tabular-nums text-neutral-900">
+                  <StarIcon className="size-4 text-warning-600" />
+                  {agency.score.toFixed(1)}
+                </span>
+                <span className="text-[11px] font-medium text-neutral-500">valoración</span>
+              </div>
+            )}
+          </Card>
+        )}
 
         <Card className="flex flex-col gap-3">
           <p className="text-sm font-bold text-neutral-800">Agrega extras (opcional)</p>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { AgencyLine } from '../components/AgencyLine';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -9,8 +10,7 @@ import { VehicleImage } from '../components/VehicleImage';
 import { EmptyState, ErrorState, VehicleCardSkeleton } from '../components/StateViews';
 import { ApiError, autosApi } from '../lib/api';
 import { useBooking } from '../lib/booking-context';
-
-const CITY_LABELS: Record<number, string> = { 1: 'Quito', 2: 'Guayaquil', 3: 'Cuenca' };
+import { cityLabel, useAgencies } from '../lib/depots';
 
 function formatRange(from: string, to: string) {
   const fmt = new Intl.DateTimeFormat('es-EC', { day: 'numeric', month: 'short', timeZone: 'UTC' });
@@ -21,9 +21,11 @@ export function ResultsPage() {
   const navigate = useNavigate();
   const { searchRequest, searchResponse, detailsById: details, setDetailsById } = useBooking();
 
+  const { byId: agencyById } = useAgencies();
+  const [agencyFilter, setAgencyFilter] = useState<number | null>(null);
+
   const summary = searchRequest && {
-    city:
-      CITY_LABELS[searchRequest.route.pickup.location.city_id ?? 0] ?? 'Ecuador',
+    city: cityLabel(searchRequest.route.pickup.location.city_id),
     dates: formatRange(searchRequest.route.pickup.datetime, searchRequest.route.dropoff.datetime),
     age: searchRequest.driver.age,
     days: Math.max(
@@ -41,10 +43,20 @@ export function ResultsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Agencias presentes en esta búsqueda, con cuántos autos tiene cada una.
+  const agencyCounts = new Map<number, number>();
+  for (const r of searchResponse?.data ?? []) {
+    agencyCounts.set(r.depot_id, (agencyCounts.get(r.depot_id) ?? 0) + 1);
+  }
+  const visible = (searchResponse?.data ?? []).filter(
+    (r) => agencyFilter === null || r.depot_id === agencyFilter,
+  );
+
   useEffect(() => {
     if (!searchResponse) return;
 
     let cancelled = false;
+    setAgencyFilter(null);
     setLoading(true);
     setError(null);
 
@@ -110,6 +122,43 @@ export function ResultsPage() {
           </div>
         )}
 
+        {agencyCounts.size > 1 && (
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por agencia">
+            {[
+              { id: null, label: 'Todas las agencias', count: searchResponse.data.length },
+              ...[...agencyCounts.entries()].map(([id, count]) => ({
+                id,
+                label: agencyById[id]?.name ?? `Agencia ${id}`,
+                count,
+              })),
+            ].map((chip) => {
+              const active = agencyFilter === chip.id;
+              return (
+                <button
+                  key={chip.id ?? 'all'}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setAgencyFilter(chip.id)}
+                  className={`flex max-w-full items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-bold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${
+                    active
+                      ? 'border-neutral-900 bg-neutral-900 text-white'
+                      : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-800'
+                  }`}
+                >
+                  <span className="truncate">{chip.label}</span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[11px] tabular-nums ${
+                      active ? 'bg-white/20 text-white' : 'bg-neutral-100 text-neutral-500'
+                    }`}
+                  >
+                    {chip.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {error && <ErrorState message={error} />}
 
         {loading && (
@@ -122,16 +171,16 @@ export function ResultsPage() {
 
         {!loading && searchResponse.data.length === 0 && (
           <EmptyState
-            title="No encontramos autos para esos filtros"
-            description="Prueba con otra ciudad o un rango de fechas distinto."
+            title={`No hay autos en ${summary?.city ?? 'esa ciudad'}`}
+            description="Prueba con otra ciudad o ajusta la búsqueda."
             actionLabel="Ajustar búsqueda"
             onAction={() => navigate('/')}
           />
         )}
 
-        {!loading && searchResponse.data.length > 0 && (
+        {!loading && visible.length > 0 && (
           <div className="flex flex-col gap-3">
-            {searchResponse.data.map((result, index) => {
+            {visible.map((result, index) => {
               const detail = details[result.vehicle_id];
               const reserved = !result.available;
               const underAge = driverAge < result.min_driver_age;
@@ -161,6 +210,7 @@ export function ResultsPage() {
                         <Badge tone="warning">Desde {result.min_driver_age} años</Badge>
                       )}
                     </div>
+                    <AgencyLine agency={agencyById[result.depot_id]} />
                     {detail && (
                       <div className="flex flex-wrap gap-3 text-xs font-semibold text-neutral-500">
                         <span className="flex items-center gap-1">
