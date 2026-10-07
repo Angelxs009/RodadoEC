@@ -1,13 +1,9 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CustomerAuthGuard } from './auth/customer-auth.guard';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { CustomerTokenService } from './auth/customer-token.service';
 import { RegisterCustomerDto } from './auth/dto/register.dto';
 import { LoginCustomerDto } from './auth/dto/login.dto';
 import { CustomersService } from './customers.service';
-
-interface AuthedRequest {
-  customerId: string;
-}
 
 /**
  * Cuenta de cliente del dominio Autos: no forma parte del contrato público
@@ -18,7 +14,10 @@ interface AuthedRequest {
 @Controller()
 @ApiTags('Cuenta de cliente')
 export class CustomersController {
-  constructor(private readonly customersService: CustomersService) {}
+  constructor(
+    private readonly customersService: CustomersService,
+    private readonly tokenService: CustomerTokenService,
+  ) {}
 
   @Post('auth/register')
   @ApiOperation({ summary: 'Registrar una cuenta de cliente' })
@@ -34,20 +33,32 @@ export class CustomersController {
   }
 
   @Get('auth/me')
-  @ApiTags('Cuenta de cliente')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Obtener el perfil del cliente autenticado' })
-  @UseGuards(CustomerAuthGuard)
-  me(@Req() req: AuthedRequest) {
-    return this.customersService.getProfile(req.customerId);
+  @ApiOperation({
+    summary: 'Obtener el perfil del cliente autenticado',
+    description:
+      'Sin token: devuelve null (nadie identificado), sin dar error, para que se pueda ' +
+      'probar en Swagger sin Authorize. Con un token de /auth/login o /auth/register válido, ' +
+      'devuelve el perfil real de esa cuenta.',
+  })
+  me(@Headers('authorization') authHeader?: string) {
+    const customerId = this.extractCustomerId(authHeader);
+    return customerId ? this.customersService.getProfile(customerId) : null;
   }
 
   @Get('me/orders')
-  @ApiTags('Cuenta de cliente')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Listar las reservas del cliente autenticado' })
-  @UseGuards(CustomerAuthGuard)
-  myOrders(@Req() req: AuthedRequest) {
-    return this.customersService.listMyOrders(req.customerId);
+  @ApiOperation({
+    summary: 'Listar las reservas del cliente autenticado',
+    description:
+      'Sin token: devuelve una lista vacía (nadie identificado), sin dar error. ' +
+      'Con un token válido, devuelve las reservas reales de esa cuenta.',
+  })
+  myOrders(@Headers('authorization') authHeader?: string) {
+    const customerId = this.extractCustomerId(authHeader);
+    return customerId ? this.customersService.listMyOrders(customerId) : [];
+  }
+
+  private extractCustomerId(authHeader?: string): string | null {
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    return this.tokenService.verify(token);
   }
 }
