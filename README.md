@@ -75,7 +75,7 @@ Los estados efímeros del flujo de reserva (`search_token`, `hold_id`, `order_pr
 
 ### 4.1.2 Edad mínima del conductor
 
-Cada vehículo tiene `min_driver_age` (21 por defecto; 25 para SUV; editable desde el admin). Si `driver.age` de la búsqueda es menor, `hold`, `preview` y `payments` responden 409 `DRIVER_AGE_RESTRICTION` (código definido en el contrato). `/search` y `/details` devuelven `min_driver_age`; la web muestra la insignia "Desde N años" y deshabilita esos autos.
+Cada vehículo tiene `min_driver_age` (18 años por defecto, la mayoría de edad en Ecuador; editable desde el admin para subirla en autos específicos). Si `driver.age` de la búsqueda es menor, `hold`, `preview` y `payments` responden 409 `DRIVER_AGE_RESTRICTION` (código definido en el contrato). `/search` y `/details` devuelven `min_driver_age`; la web muestra la insignia "Desde N años" y deshabilita esos autos.
 
 ### 4.2 Backoffice de administración (no forma parte del contrato)
 

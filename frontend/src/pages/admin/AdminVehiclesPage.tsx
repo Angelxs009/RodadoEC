@@ -203,7 +203,7 @@ export function AdminVehiclesPage() {
               label="Edad mínima conductor"
               type="number"
               min={18}
-              placeholder="21"
+              placeholder="18"
               value={form.min_driver_age ?? ''}
               onChange={(e) =>
                 setForm({
@@ -321,7 +321,7 @@ export function AdminVehiclesPage() {
                   <Td>{v.car_type}</Td>
                   <Td>${v.price_per_day.toFixed(2)}</Td>
                   <Td>{v.depot_id}</Td>
-                  <Td className="tabular-nums">{v.min_driver_age ?? 21}</Td>
+                  <Td className="tabular-nums">{v.min_driver_age ?? 18}</Td>
                   <Td>
                     <Badge tone={v.status === 'RESERVED' ? 'danger' : 'success'}>
                       {v.status === 'RESERVED' ? 'Reservado' : 'Disponible'}

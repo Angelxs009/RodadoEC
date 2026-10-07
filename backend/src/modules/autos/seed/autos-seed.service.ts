@@ -65,12 +65,12 @@ export class AutosSeedService implements OnModuleInit {
       this.logger.log(`Sembrados ${missing.length} vehículos nuevos`);
     }
 
-    // Edad mínima por defecto del catálogo base: SUV 25 años, resto 21 (solo si aún no está definida).
+    // Edad mínima por defecto del catálogo base: 18 años (mayoría de edad en Ecuador), solo si aún no está definida.
     for (const v of MOCK_VEHICLES) {
       await this.vehicleRepository
         .createQueryBuilder()
         .update(Vehicle)
-        .set({ min_driver_age: v.car_type === 'SUV' ? 25 : 21 })
+        .set({ min_driver_age: 18 })
         .where('vehicle_id = :id AND min_driver_age IS NULL', { id: v.vehicle_id })
         .execute();
     }

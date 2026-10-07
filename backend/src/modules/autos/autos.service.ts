@@ -61,7 +61,7 @@ const SEARCH_TTL_MS = 30 * 60 * 1000;
 const HOLD_TTL_MS = 5 * 60 * 1000;
 const PREVIEW_TTL_MS = 10 * 60 * 1000;
 
-export const DEFAULT_MIN_DRIVER_AGE = 21;
+export const DEFAULT_MIN_DRIVER_AGE = 18; // mayoría de edad en Ecuador
 export const minDriverAge = (v: Pick<Vehicle, 'min_driver_age'>): number =>
   v.min_driver_age ?? DEFAULT_MIN_DRIVER_AGE;
 

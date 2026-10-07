@@ -51,7 +51,7 @@ export class Vehicle {
   @Column({ type: 'varchar', length: 300, nullable: true })
   image_url: string | null;
 
-  // Edad mínima del conductor. null = usa el valor por defecto (21); el seed fija 25 para SUV.
+  // Edad mínima del conductor. null = usa el valor por defecto (18, mayoría de edad en Ecuador).
   @Column({ type: 'int', nullable: true })
   min_driver_age: number | null;
 
