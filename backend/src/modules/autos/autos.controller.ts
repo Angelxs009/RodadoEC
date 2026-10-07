@@ -1,9 +1,9 @@
 import {
   Body, Controller, Delete, Get, Header, Headers, HttpCode, HttpStatus,
-  Param, ParseUUIDPipe, Post, UnauthorizedException, UseGuards,
+  Param, ParseUUIDPipe, Post, UseGuards,
 } from '@nestjs/common';
 import {
-  ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags,
+  ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags,
 } from '@nestjs/swagger';
 import { IdempotencyKeyGuard } from '../../common/guards/idempotency-key.guard';
 import { CustomerTokenService } from '../customers/auth/customer-token.service';
@@ -177,10 +177,8 @@ export class AutosController {
   @ApiOperation({
     summary: 'Crear orden/reserva de renta de vehículo',
     description:
-      'Requiere una CUENTA de cliente: la reserva queda ligada a ella. Regístrate con POST /auth/register (o inicia sesión con POST /auth/login), copia el token y pégalo una sola vez en "Authorize". Además exige un pago aprobado (POST /payments).',
+      'Opcionalmente, envía un token de cliente válido (POST /auth/register o POST /auth/login) para ligar la reserva a tu cuenta. También se puede reservar sin cuenta. Además exige un pago aprobado (POST /payments).',
   })
-  @ApiBearerAuth()
-  @ApiResponse({ status: 401, description: 'Falta iniciar sesión (cuenta de cliente requerida)' })
   @ApiResponse({ status: 402, description: 'Pago requerido o no aprobado' })
   @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'UUID v4 para evitar cobros duplicados' })
   @ApiResponse({ status: 201, description: 'Orden creada exitosamente', type: OrderDetailDto })
@@ -193,15 +191,8 @@ export class AutosController {
     @Headers('Authorization') authHeader: string | undefined,
     @Body() createRequest: OrderCreateRequestDto,
   ): Promise<OrderDetailDto> {
-    // Regla de negocio: no se reserva sin cuenta. El token de cliente (JWT) llega
-    // en Authorization y la orden queda ligada a ese cliente.
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
     const customerId = this.customerTokenService.verify(token);
-    if (!customerId) {
-      throw new UnauthorizedException(
-        'Debes iniciar sesión con una cuenta de cliente para reservar (POST /auth/register o /auth/login).',
-      );
-    }
     return this.autosService.createOrder(createRequest, customerId);
   }
 

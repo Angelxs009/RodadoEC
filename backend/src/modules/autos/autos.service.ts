@@ -266,7 +266,7 @@ export class AutosService {
 
   async createOrder(
     createRequest: OrderCreateRequestDto,
-    customerId: string,
+    customerId: string | null = null,
   ): Promise<OrderDetailDto> {
     const preview = this.cache.get<CachedPreview>(`preview:${createRequest.order_preview_id}`);
     if (!preview) {

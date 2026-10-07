@@ -67,7 +67,7 @@ Los estados efímeros del flujo de reserva (`search_token`, `hold_id`, `order_pr
 ### 4.1.1 Pago simulado y disponibilidad
 
 - `POST /payments` (extra, no contractual): simula una pasarela. Recibe `order_preview_id` + tarjeta; el monto lo toma el servidor de la previsualización. Tarjeta `4242 4242 4242 4242` = aprobada; `4000 0000 0000 0002` = rechazada (fondos insuficientes); número inválido (Luhn) o vencida = rechazada (HTTP 402).
-- **No se reserva sin cuenta:** `POST /orders/create` exige el token JWT de un cliente registrado (`/auth/register` o `/auth/login`); sin él responde 401 y la orden queda ligada a esa cuenta. En la web, `/checkout` redirige al login y vuelve al checkout. Es el único endpoint con candado en Swagger.
+- **Cuenta de cliente:** en la web, `/checkout` exige iniciar sesión (redirige al login/registro y vuelve al checkout). El API acepta reservas con o sin token de cliente (si llega uno válido, la orden queda ligada a esa cuenta) para poder probarlo desde Swagger. Swagger no tiene ningún endpoint con candado.
 - `POST /orders/create` **exige** un `payment_reference` de un pago APROBADO, no usado, de esa previsualización y por el total exacto; si no, responde 402 `PAYMENT_REQUIRED`.
 - Al crear la orden el auto pasa a `RESERVED` de forma atómica (`UPDATE ... WHERE status='AVAILABLE'`): si dos clientes intentan reservarlo a la vez, solo uno gana y el otro recibe 409 `CAR_NO_LONGER_AVAILABLE` (y su pago se marca `REFUNDED`).
 - `/search` devuelve los autos reservados con `available: false`; la web los muestra como "Reservado" y no deja seleccionarlos. `hold`, `preview` y `payments` también rechazan autos reservados.
@@ -82,7 +82,7 @@ Los estados efímeros del flujo de reserva (`search_token`, `hold_id`, `order_pr
 | POST | `/api/v1/admin/vehicles/:id/release` · `/reserve` | Marcar un vehículo como disponible / reservado |
 | GET/POST | `/api/v1/admin/depots` | Listar / crear agencias |
 | PUT/DELETE | `/api/v1/admin/depots/:id` | Editar / eliminar una agencia |
-| GET/POST | `/api/v1/admin/users` | Listar / crear usuarios, **administradores y clientes** (requiere token de admin). Las cuentas creadas son válidas al instante: el admin entra por `/admin/auth/login` y el cliente por `/auth/login`. |
+| GET/POST | `/api/v1/admin/users` | Listar / crear usuarios, **administradores y clientes** (sin candado en Swagger). Las cuentas creadas son válidas al instante: el admin entra por `/admin/auth/login` y el cliente por `/auth/login`. |
 | DELETE | `/api/v1/admin/users/:role/:id` | Eliminar un usuario (`role` = `ADMIN` o `CUSTOMER`) |
 | GET | `/api/v1/admin/orders` | Listar todas las órdenes (filtro opcional `?status=`) |
 | GET | `/api/v1/admin/orders/:id` | Detalle administrativo de una orden |

@@ -1,23 +1,17 @@
 import {
-  Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseEnumPipe, ParseUUIDPipe, Post, UseGuards,
+  Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseEnumPipe, ParseUUIDPipe, Post,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AdminUsersService } from './admin-users.service';
-import { AdminAuthGuard } from './auth/admin-auth.guard';
 import {
   CreateUserAdminDto, USER_ROLES, UserAdminResponseDto, type UserRole,
 } from './dto/user-admin.dto';
 
 /**
  * Gestión de usuarios (administradores y clientes) desde el backoffice.
- * Es la única parte de /admin protegida con token: crear cuentas de administrador
- * sin autenticarse sería una escalada de privilegios abierta a cualquiera.
- * Token: POST /admin/auth/login → "Authorize".
  */
 @Controller('admin/users')
 @ApiTags('Administración')
-@UseGuards(AdminAuthGuard)
-@ApiBearerAuth()
 export class AdminUsersController {
   constructor(private readonly usersService: AdminUsersService) {}
 
