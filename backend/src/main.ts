@@ -61,7 +61,11 @@ async function bootstrap() {
     };
   }
 
-  SwaggerModule.setup('api/docs', app, document);
+  // persistAuthorization: el token pegado en "Authorize" sobrevive a un F5
+  // de la página de Swagger (si no, hay que volver a pegarlo cada recarga).
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: { persistAuthorization: true },
+  });
 
   await app.listen(process.env.PORT || 3000);
 }
