@@ -24,17 +24,9 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('Booking Prototipo API')
-    .setDescription(
-      'API base para los dominios de Alojamientos, Autos, Atracciones y Vuelos.\n\n' +
-        '### Cómo probar los endpoints con candado 🔒\n' +
-        '1. Ejecuta **POST /admin/auth/login** (usuario/clave de demo ya vienen precargados) ' +
-        'o **POST /auth/register** para crear una cuenta de cliente de prueba.\n' +
-        '2. Copia el valor de `token` de la respuesta.\n' +
-        '3. Dale clic a **Authorize** (arriba a la derecha) y pégalo ahí — una sola vez.\n' +
-        '4. Ya puedes ejecutar cualquier endpoint protegido.',
-    )
+    .setDescription('API base para los dominios de Alojamientos, Autos, Atracciones y Vuelos.')
     .setVersion('1.0')
-    .addBearerAuth() // usado por el login del backoffice de Admin (POST /admin/auth/login)
+    .addBearerAuth() // usado por /auth/me y /me/orders, los únicos endpoints que distinguen cuenta
     .build();
   
   // extraModels: registra WebhookPayloadDto en components.schemas aunque no
