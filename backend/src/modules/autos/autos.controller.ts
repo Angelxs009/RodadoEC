@@ -1,9 +1,9 @@
 import {
   Body, Controller, Delete, Get, Header, Headers, HttpCode, HttpStatus,
-  Param, ParseUUIDPipe, Post, UseGuards,
+  Param, ParseUUIDPipe, Post, UnauthorizedException, UseGuards,
 } from '@nestjs/common';
 import {
-  ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags,
+  ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags,
 } from '@nestjs/swagger';
 import { IdempotencyKeyGuard } from '../../common/guards/idempotency-key.guard';
 import { CustomerTokenService } from '../customers/auth/customer-token.service';
@@ -174,7 +174,14 @@ export class AutosController {
 
   @Post('orders/create')
   @ApiTags('Gestión de Órdenes (Reservas)')
-  @ApiOperation({ summary: 'Crear orden/reserva de renta de vehículo' })
+  @ApiOperation({
+    summary: 'Crear orden/reserva de renta de vehículo',
+    description:
+      'Requiere una CUENTA de cliente: la reserva queda ligada a ella. Regístrate con POST /auth/register (o inicia sesión con POST /auth/login), copia el token y pégalo una sola vez en "Authorize". Además exige un pago aprobado (POST /payments).',
+  })
+  @ApiBearerAuth()
+  @ApiResponse({ status: 401, description: 'Falta iniciar sesión (cuenta de cliente requerida)' })
+  @ApiResponse({ status: 402, description: 'Pago requerido o no aprobado' })
   @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'UUID v4 para evitar cobros duplicados' })
   @ApiResponse({ status: 201, description: 'Orden creada exitosamente', type: OrderDetailDto })
   @ApiResponse({ status: 400, description: 'Petición inválida' })
@@ -186,12 +193,15 @@ export class AutosController {
     @Headers('Authorization') authHeader: string | undefined,
     @Body() createRequest: OrderCreateRequestDto,
   ): Promise<OrderDetailDto> {
-    // Si el cliente inició sesión, el frontend manda su token real de cliente
-    // en este mismo header (en vez del Bearer "dev-token-autos" anónimo que
-    // ScopesGuard igual acepta). Si no es un token de cliente válido, la
-    // reserva sigue como invitado (guest checkout), sin romper el contrato.
+    // Regla de negocio: no se reserva sin cuenta. El token de cliente (JWT) llega
+    // en Authorization y la orden queda ligada a ese cliente.
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
     const customerId = this.customerTokenService.verify(token);
+    if (!customerId) {
+      throw new UnauthorizedException(
+        'Debes iniciar sesión con una cuenta de cliente para reservar (POST /auth/register o /auth/login).',
+      );
+    }
     return this.autosService.createOrder(createRequest, customerId);
   }
 

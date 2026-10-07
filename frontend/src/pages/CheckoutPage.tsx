@@ -118,12 +118,11 @@ export function CheckoutPage() {
           Datos del conductor
         </h1>
 
-        {profile && (
-          <p className="text-sm text-neutral-500">
-            Reservando como <span className="font-semibold text-neutral-800">{profile.email}</span>
-            . Esta reserva quedará guardada en tu cuenta.
-          </p>
-        )}
+        <p className="text-sm text-neutral-500">
+          Reservando como{' '}
+          <span className="font-semibold text-neutral-800">{profile?.email ?? 'tu cuenta'}</span>.
+          Esta reserva quedará guardada en tu cuenta.
+        </p>
 
         <Card className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

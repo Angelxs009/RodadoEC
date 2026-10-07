@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Input } from '../../components/Input';
@@ -10,6 +10,7 @@ import { useCustomerAuth } from '../../lib/customer-auth-context';
 
 export function AccountLoginPage() {
   const navigate = useNavigate();
+  const from = (useLocation().state as { from?: string } | null)?.from;
   const { login } = useCustomerAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,7 +23,7 @@ export function AccountLoginPage() {
     setError(null);
     try {
       await login({ email, password });
-      navigate('/cuenta', { replace: true });
+      navigate(from ?? '/cuenta', { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo conectar con el servidor.');
     } finally {
@@ -40,7 +41,9 @@ export function AccountLoginPage() {
           <div>
             <h1 className="display-heading text-xl text-neutral-900">Ingresa a tu cuenta</h1>
             <p className="mt-1 text-sm text-neutral-500">
-              Para agilizar tus reservas y ver tu historial.
+              {from === '/checkout'
+                ? 'Necesitas una cuenta para completar tu reserva.'
+                : 'Para agilizar tus reservas y ver tu historial.'}
             </p>
           </div>
         </div>
@@ -75,7 +78,10 @@ export function AccountLoginPage() {
 
         <p className="mt-4 text-center text-sm text-neutral-500">
           ¿No tienes cuenta?{' '}
-          <Link to="/cuenta/registro" className="font-semibold text-brand-600 hover:underline">
+          <Link
+            to="/cuenta/registro"
+            state={from ? { from } : undefined}
+            className="font-semibold text-brand-600 hover:underline">
             Regístrate
           </Link>
         </p>

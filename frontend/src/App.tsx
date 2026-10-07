@@ -31,7 +31,14 @@ function App() {
               <Route path="/" element={<SearchPage />} />
               <Route path="/resultados" element={<ResultsPage />} />
               <Route path="/auto/:vehicleId" element={<VehicleDetailPage />} />
-              <Route path="/checkout" element={<CheckoutPage />} />
+              <Route
+                path="/checkout"
+                element={
+                  <RequireCustomerAuth>
+                    <CheckoutPage />
+                  </RequireCustomerAuth>
+                }
+              />
               <Route path="/orden/:orderId" element={<ConfirmationPage />} />
 
               <Route path="/cuenta/login" element={<AccountLoginPage />} />
