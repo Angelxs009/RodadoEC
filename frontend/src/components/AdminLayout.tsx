@@ -8,6 +8,7 @@ const TABS = [
   { to: '/admin', label: 'Vehículos', end: true },
   { to: '/admin/depots', label: 'Agencias' },
   { to: '/admin/orders', label: 'Órdenes' },
+  { to: '/admin/users', label: 'Usuarios' },
   { to: '/admin/webhooks', label: 'Webhooks' },
 ];
 

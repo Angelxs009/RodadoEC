@@ -49,6 +49,8 @@ El `AutosController` es fiel al contrato del curso (rutas planas: `/search`, `/o
 | `Depot` | `autos_depots` | `depot_id`, `name`, `city_id`, `airport`, `score` | Agencias de recogida/entrega. |
 | `Supplier` | `autos_suppliers` | `supplier_id`, `name` | Proveedores de renta. |
 | `Order` | `autos_orders` | `locator`, `status`, `vehicle_details` (jsonb), `route_details` (jsonb), `extras`, `total_price`, `currency` | Snapshot del vehículo/ruta al momento de la reserva; persiste el ciclo de vida completo (CONFIRMED/CANCELLED). |
+| `AdminUser` | `autos_admins` | `username` (único), `password_hash` (scrypt), `first_name`, `last_name` | Administradores creados desde el panel; conviven con la cuenta de arranque (`ADMIN_USERNAME`/`ADMIN_PASSWORD`). |
+| `Customer` | `autos_customers` | `email` (único), `password_hash`, `first_name`, `last_name`, `phone_number` | Clientes: se registran solos o los crea un admin. |
 | `Payment` | `autos_payments` | `reference`, `status` (`APPROVED`/`DECLINED`/`REFUNDED`), `amount`, `order_preview_id`, `card_brand`, `card_last4`, `order_id` | Pago simulado. Nunca guarda número completo ni CVV. Un pago aprobado se consume en una sola orden. |
 | `WebhookSubscription` | `autos_webhook_subscriptions` | `url`, `events` (array), `secret` | Suscripciones a eventos de dominio. |
 
@@ -80,6 +82,8 @@ Los estados efímeros del flujo de reserva (`search_token`, `hold_id`, `order_pr
 | POST | `/api/v1/admin/vehicles/:id/release` · `/reserve` | Marcar un vehículo como disponible / reservado |
 | GET/POST | `/api/v1/admin/depots` | Listar / crear agencias |
 | PUT/DELETE | `/api/v1/admin/depots/:id` | Editar / eliminar una agencia |
+| GET/POST | `/api/v1/admin/users` | Listar / crear usuarios, **administradores y clientes** (requiere token de admin). Las cuentas creadas son válidas al instante: el admin entra por `/admin/auth/login` y el cliente por `/auth/login`. |
+| DELETE | `/api/v1/admin/users/:role/:id` | Eliminar un usuario (`role` = `ADMIN` o `CUSTOMER`) |
 | GET | `/api/v1/admin/orders` | Listar todas las órdenes (filtro opcional `?status=`) |
 | GET | `/api/v1/admin/orders/:id` | Detalle administrativo de una orden |
 

@@ -16,8 +16,11 @@ import type {
 import type {
   AdminDepot,
   AdminOrder,
+  AdminUserAccount,
   AdminVehicle,
   CreateDepotInput,
+  CreateUserInput,
+  UserRole,
   CreateVehicleInput,
 } from '../types/admin';
 import type {
@@ -227,6 +230,12 @@ export const adminApi = {
     }),
   deleteDepot: (id: string) =>
     request<void>(`/admin/depots/${id}`, { method: 'DELETE', adminAuth: true }),
+
+  listUsers: () => request<AdminUserAccount[]>('/admin/users', { method: 'GET', adminAuth: true }),
+  createUser: (payload: CreateUserInput) =>
+    request<AdminUserAccount>('/admin/users', { body: payload, adminAuth: true }),
+  deleteUser: (role: UserRole, id: string) =>
+    request<void>(`/admin/users/${role}/${id}`, { method: 'DELETE', adminAuth: true }),
 
   listOrders: (status?: OrderStatus) =>
     request<AdminOrder[]>(`/admin/orders${status ? `?status=${status}` : ''}`, {

@@ -12,6 +12,7 @@ import { MyAccountPage } from './pages/account/MyAccountPage';
 import { AdminDepotsPage } from './pages/admin/AdminDepotsPage';
 import { AdminLoginPage } from './pages/admin/AdminLoginPage';
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage';
+import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminVehiclesPage } from './pages/admin/AdminVehiclesPage';
 import { CheckoutPage } from './pages/CheckoutPage';
 import { ConfirmationPage } from './pages/ConfirmationPage';
@@ -79,6 +80,16 @@ function App() {
                   <RequireAdminAuth>
                     <AdminLayout>
                       <AdminOrdersPage />
+                    </AdminLayout>
+                  </RequireAdminAuth>
+                }
+              />
+              <Route
+                path="/admin/users"
+                element={
+                  <RequireAdminAuth>
+                    <AdminLayout>
+                      <AdminUsersPage />
                     </AdminLayout>
                   </RequireAdminAuth>
                 }

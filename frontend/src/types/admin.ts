@@ -41,3 +41,28 @@ export interface AdminOrder {
   currency: string;
   creation_date: string;
 }
+
+export type UserRole = 'ADMIN' | 'CUSTOMER';
+
+export interface AdminUserAccount {
+  id: string | null;
+  role: UserRole;
+  /** username (ADMIN) o email (CUSTOMER) con el que inicia sesión. */
+  login: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone_number: string | null;
+  created_at: string | null;
+  /** Cuenta de arranque (variables de entorno): no se puede eliminar. */
+  protected: boolean;
+}
+
+export interface CreateUserInput {
+  role: UserRole;
+  username?: string;
+  email?: string;
+  password: string;
+  first_name?: string;
+  last_name?: string;
+  phone_number?: string;
+}

@@ -20,6 +20,6 @@ import { Customer } from './entities/customer.entity';
   ],
   controllers: [CustomersController],
   providers: [CustomersService, PasswordService, CustomerTokenService, CustomerAuthGuard],
-  exports: [CustomerTokenService], // AutosModule lo usa para ligar órdenes al cliente logueado
+  exports: [CustomerTokenService, PasswordService], // CustomerTokenService: AutosModule liga órdenes al cliente; PasswordService: AdminModule crea usuarios
 })
 export class CustomersModule {}
