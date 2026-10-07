@@ -30,6 +30,14 @@ export const vehicleReserved = (vehicleId: string) =>
     `El vehículo "${vehicleId}" ya está reservado y no estará disponible hasta que el administrador lo libere.`,
   );
 
+export const driverAgeRestriction = (vehicleId: string, minAge: number, age: number) =>
+  problem(
+    HttpStatus.CONFLICT,
+    ProblemCode.DRIVER_AGE_RESTRICTION,
+    'Edad del conductor no permitida',
+    `El vehículo "${vehicleId}" exige un conductor de al menos ${minAge} años; el conductor indicado tiene ${age}.`,
+  );
+
 export const paymentRequired = (detail: string) =>
   problem(HttpStatus.PAYMENT_REQUIRED, ProblemCode.PAYMENT_REQUIRED, 'Pago requerido', detail);
 

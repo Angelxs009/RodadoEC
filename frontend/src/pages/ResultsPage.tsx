@@ -35,7 +35,9 @@ export function ResultsPage() {
       ),
     ),
   };
-  const availableCount = searchResponse?.data.filter((v) => v.available).length ?? 0;
+  const driverAge = searchRequest?.driver.age ?? 0;
+  const availableCount =
+    searchResponse?.data.filter((v) => v.available && driverAge >= v.min_driver_age).length ?? 0;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,12 +134,14 @@ export function ResultsPage() {
             {searchResponse.data.map((result, index) => {
               const detail = details[result.vehicle_id];
               const reserved = !result.available;
+              const underAge = driverAge < result.min_driver_age;
+              const blocked = reserved || underAge;
               return (
                 <Card
                   key={result.vehicle_id}
                   style={{ animationDelay: `${index * 60}ms` }}
                   className={`fade-up group flex flex-col items-stretch gap-4 !p-3 transition-all duration-200 sm:flex-row sm:items-center sm:!pr-6 ${
-                    reserved
+                    blocked
                       ? 'bg-neutral-50'
                       : 'hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-lg'
                   }`}
@@ -145,7 +149,7 @@ export function ResultsPage() {
                   <VehicleImage
                     src={detail?.image_url}
                     alt={detail ? `${detail.make} ${detail.model}` : result.vehicle_id}
-                    className={`h-44 w-full shrink-0 rounded-md sm:h-32 sm:w-52 ${reserved ? 'opacity-50 grayscale' : ''}`}
+                    className={`h-44 w-full shrink-0 rounded-md sm:h-32 sm:w-52 ${blocked ? 'opacity-50 grayscale' : ''}`}
                   />
                   <div className="flex flex-1 flex-col gap-1.5">
                     <div className="flex flex-wrap items-center gap-2">
@@ -153,6 +157,9 @@ export function ResultsPage() {
                         {detail ? `${detail.make} ${detail.model}` : result.vehicle_id}
                       </p>
                       {reserved && <Badge tone="danger">Reservado</Badge>}
+                      {!reserved && underAge && (
+                        <Badge tone="warning">Desde {result.min_driver_age} años</Badge>
+                      )}
                     </div>
                     {detail && (
                       <div className="flex flex-wrap gap-3 text-xs font-semibold text-neutral-500">
@@ -183,10 +190,10 @@ export function ResultsPage() {
                     </div>
                     <Button
                       size="sm"
-                      disabled={reserved}
+                      disabled={blocked}
                       onClick={() => navigate(`/auto/${result.vehicle_id}`)}
                     >
-                      {reserved ? 'No disponible' : 'Seleccionar'}
+                      {blocked ? 'No disponible' : 'Seleccionar'}
                     </Button>
                   </div>
                 </Card>

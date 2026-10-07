@@ -200,6 +200,19 @@ export function AdminVehiclesPage() {
               onChange={(e) => setForm({ ...form, price_per_day: Number(e.target.value) })}
             />
             <Input
+              label="Edad mínima conductor"
+              type="number"
+              min={18}
+              placeholder="21"
+              value={form.min_driver_age ?? ''}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  min_driver_age: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+            />
+            <Input
               label="Supplier ID"
               type="number"
               value={form.supplier_id}
@@ -237,6 +250,7 @@ export function AdminVehiclesPage() {
             <Th>Tipo</Th>
             <Th>Precio/día</Th>
             <Th>Depot</Th>
+            <Th>Edad mín.</Th>
             <Th>Estado</Th>
             <Th></Th>
           </TableHead>
@@ -244,7 +258,7 @@ export function AdminVehiclesPage() {
             {vehicles.map((v) =>
               editingId === v.id ? (
                 <Tr key={v.id}>
-                  <Td colSpan={7} className="!p-2">
+                  <Td colSpan={8} className="!p-2">
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                       <input
                         className="h-9 rounded-sm border border-neutral-300 px-2 text-sm"
@@ -307,6 +321,7 @@ export function AdminVehiclesPage() {
                   <Td>{v.car_type}</Td>
                   <Td>${v.price_per_day.toFixed(2)}</Td>
                   <Td>{v.depot_id}</Td>
+                  <Td className="tabular-nums">{v.min_driver_age ?? 21}</Td>
                   <Td>
                     <Badge tone={v.status === 'RESERVED' ? 'danger' : 'success'}>
                       {v.status === 'RESERVED' ? 'Reservado' : 'Disponible'}

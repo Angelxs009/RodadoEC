@@ -28,6 +28,8 @@ export interface CarSearchResult {
   supplier_id: number;
   /** false si el auto ya está reservado (no se puede volver a reservar). */
   available: boolean;
+  /** Edad mínima del conductor para este auto. */
+  min_driver_age: number;
 }
 
 export interface CarSearchResponse {
@@ -46,6 +48,7 @@ export interface CarDetailsResult {
   seats: number;
   image_url?: string | null;
   status?: 'AVAILABLE' | 'RESERVED';
+  min_driver_age?: number;
 }
 
 export interface CarDetailsResponse {

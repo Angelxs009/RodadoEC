@@ -51,6 +51,10 @@ export class Vehicle {
   @Column({ type: 'varchar', length: 300, nullable: true })
   image_url: string | null;
 
+  // Edad mínima del conductor. null = usa el valor por defecto (21); el seed fija 25 para SUV.
+  @Column({ type: 'int', nullable: true })
+  min_driver_age: number | null;
+
   // RESERVED = tiene una reserva activa; no se puede volver a reservar hasta que
   // el admin (o la cancelación de la orden) lo devuelva a AVAILABLE.
   @Column({ type: 'varchar', length: 20, default: VehicleStatus.AVAILABLE })

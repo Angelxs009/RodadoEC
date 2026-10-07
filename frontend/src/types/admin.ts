@@ -15,6 +15,7 @@ export interface AdminVehicle {
   depot_id: number;
   image_url?: string | null;
   status: 'AVAILABLE' | 'RESERVED';
+  min_driver_age?: number | null;
 }
 
 export type CreateVehicleInput = Omit<AdminVehicle, 'id' | 'status'> & {

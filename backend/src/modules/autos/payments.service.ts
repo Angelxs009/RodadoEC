@@ -2,12 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
-import type { CachedPreview } from './autos.service';
+import { minDriverAge, type CachedPreview } from './autos.service';
 import { TtlCacheService } from './cache/ttl-cache.service';
 import { CardDto, PaymentRequestDto, PaymentResponseDto } from './dto/payment.dto';
 import { Payment, PaymentStatus } from './entities/payment.entity';
 import { Vehicle, VehicleStatus } from './entities/vehicle.entity';
-import { bookingNotConfirmed, paymentDeclined, vehicleReserved } from './errors/autos-errors';
+import {
+  bookingNotConfirmed,
+  driverAgeRestriction,
+  paymentDeclined,
+  vehicleReserved,
+} from './errors/autos-errors';
 
 function luhnValid(number: string): boolean {
   let sum = 0;
@@ -54,6 +59,10 @@ export class PaymentsService {
     const vehicle = await this.vehicleRepository.findOneBy({ vehicle_id: preview.vehicle_id });
     if (!vehicle || vehicle.status !== VehicleStatus.AVAILABLE) {
       throw vehicleReserved(preview.vehicle_id);
+    }
+
+    if (preview.driver_age < minDriverAge(vehicle)) {
+      throw driverAgeRestriction(vehicle.vehicle_id, minDriverAge(vehicle), preview.driver_age);
     }
 
     const declineReason = this.evaluateCard(request.card);

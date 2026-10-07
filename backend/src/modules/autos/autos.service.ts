@@ -26,6 +26,7 @@ import {
   bookingNotConfirmed,
   cancellationNotAllowed,
   carNoLongerAvailable,
+  driverAgeRestriction,
   orderNotFound,
   orderNotModifiable,
   paymentRequired,
@@ -37,6 +38,7 @@ import { WebhooksDispatcherService } from './webhooks/webhooks-dispatcher.servic
 interface CachedSearch {
   vehicles: Vehicle[];
   route: CarSearchRequestDto['route'];
+  driver_age: number;
 }
 
 interface CachedHold {
@@ -45,6 +47,7 @@ interface CachedHold {
 }
 
 export interface CachedPreview {
+  driver_age: number;
   vehicle_id: string;
   search_token: string;
   extras: string[];
@@ -57,6 +60,10 @@ export interface CachedPreview {
 const SEARCH_TTL_MS = 30 * 60 * 1000;
 const HOLD_TTL_MS = 5 * 60 * 1000;
 const PREVIEW_TTL_MS = 10 * 60 * 1000;
+
+export const DEFAULT_MIN_DRIVER_AGE = 21;
+export const minDriverAge = (v: Pick<Vehicle, 'min_driver_age'>): number =>
+  v.min_driver_age ?? DEFAULT_MIN_DRIVER_AGE;
 
 function daysBetween(pickup: string, dropoff: string): number {
   const ms = new Date(dropoff).getTime() - new Date(pickup).getTime();
@@ -98,15 +105,15 @@ export class AutosService {
     const limit = searchRequest.maximum_results ?? 100;
     const found = await this.vehicleRepository.find({ where, take: limit });
     // Los disponibles primero; los reservados se muestran igual, marcados como no disponibles.
-    const vehicles = [...found].sort(
-      (a, b) =>
-        Number(b.status === VehicleStatus.AVAILABLE) - Number(a.status === VehicleStatus.AVAILABLE),
-    );
+    const driverAge = searchRequest.driver.age;
+    const bookable = (v: Vehicle) =>
+      v.status === VehicleStatus.AVAILABLE && driverAge >= minDriverAge(v);
+    const vehicles = [...found].sort((a, b) => Number(bookable(b)) - Number(bookable(a)));
 
     const days = daysBetween(searchRequest.route.pickup.datetime, searchRequest.route.dropoff.datetime);
     const search_token = randomUUID();
 
-    this.cache.set(`search:${search_token}`, { vehicles, route: searchRequest.route } as CachedSearch, SEARCH_TTL_MS);
+    this.cache.set(`search:${search_token}`, { vehicles, route: searchRequest.route, driver_age: driverAge } as CachedSearch, SEARCH_TTL_MS);
 
     return {
       request_id: randomUUID(),
@@ -115,6 +122,7 @@ export class AutosService {
         price: Number((v.price_per_day * days).toFixed(2)),
         supplier_id: v.supplier_id,
         available: v.status === VehicleStatus.AVAILABLE,
+        min_driver_age: minDriverAge(v),
       })),
       metadata: { total_results: vehicles.length, next_page: null },
       search_token,
@@ -134,6 +142,7 @@ export class AutosService {
         seats: v.seats,
         image_url: v.image_url,
         status: v.status,
+        min_driver_age: minDriverAge(v),
       })),
     };
   }
@@ -203,6 +212,7 @@ export class AutosService {
     if (!cached || !vehicle) {
       throw carNoLongerAvailable(holdRequest.vehicle_id);
     }
+    this.assertDriverAge(vehicle, cached.driver_age);
     await this.assertVehicleAvailable(holdRequest.vehicle_id);
 
     const hold_id = randomUUID();
@@ -230,6 +240,7 @@ export class AutosService {
     if (previewRequest.hold_id && !this.cache.has(`hold:${previewRequest.hold_id}`)) {
       throw carNoLongerAvailable(previewRequest.vehicle_id);
     }
+    this.assertDriverAge(vehicle, cached.driver_age);
     await this.assertVehicleAvailable(previewRequest.vehicle_id);
 
     const days = daysBetween(cached.route.pickup.datetime, cached.route.dropoff.datetime);
@@ -242,6 +253,7 @@ export class AutosService {
     this.cache.set(
       `preview:${order_preview_id}`,
       {
+        driver_age: cached.driver_age,
         vehicle_id: previewRequest.vehicle_id,
         search_token: previewRequest.search_token,
         extras,
@@ -277,6 +289,8 @@ export class AutosService {
     if (!vehicle) {
       throw priceChanged();
     }
+
+    this.assertDriverAge(vehicle, preview.driver_age);
 
     // Sin pago aprobado no hay reserva: el pago debe existir, estar APROBADO,
     // no haberse usado ya, corresponder a esta previsualización y cubrir el total.
@@ -401,6 +415,11 @@ export class AutosService {
     this.webhooksDispatcher
       .dispatch(WebhookEvent.CAR_ORDER_CANCELLED, saved)
       .catch(() => undefined);
+  }
+
+  private assertDriverAge(vehicle: Pick<Vehicle, 'vehicle_id' | 'min_driver_age'>, age: number): void {
+    const min = minDriverAge(vehicle);
+    if (age < min) throw driverAgeRestriction(vehicle.vehicle_id, min, age);
   }
 
   private async assertVehicleAvailable(vehicleId: string): Promise<void> {

@@ -65,6 +65,16 @@ export class AutosSeedService implements OnModuleInit {
       this.logger.log(`Sembrados ${missing.length} vehículos nuevos`);
     }
 
+    // Edad mínima por defecto del catálogo base: SUV 25 años, resto 21 (solo si aún no está definida).
+    for (const v of MOCK_VEHICLES) {
+      await this.vehicleRepository
+        .createQueryBuilder()
+        .update(Vehicle)
+        .set({ min_driver_age: v.car_type === 'SUV' ? 25 : 21 })
+        .where('vehicle_id = :id AND min_driver_age IS NULL', { id: v.vehicle_id })
+        .execute();
+    }
+
     // Backfill: vehículos creados antes de existir image_url
     for (const v of MOCK_VEHICLES) {
       await this.vehicleRepository

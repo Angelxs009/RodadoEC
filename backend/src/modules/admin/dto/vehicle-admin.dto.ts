@@ -70,6 +70,12 @@ export class CreateVehicleAdminDto {
   @IsOptional()
   @IsIn(VEHICLE_STATUSES)
   status?: VehicleStatus;
+
+  @ApiPropertyOptional({ example: 25, description: 'Edad mínima del conductor (por defecto 21).' })
+  @IsOptional()
+  @IsInt()
+  @Min(18)
+  min_driver_age?: number;
 }
 
 export class UpdateVehicleAdminDto extends PartialType(CreateVehicleAdminDto) {}

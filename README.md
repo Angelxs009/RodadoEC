@@ -45,7 +45,7 @@ El `AutosController` es fiel al contrato del curso (rutas planas: `/search`, `/o
 
 | Entidad | Tabla | Campos clave | Notas |
 |---|---|---|---|
-| `Vehicle` | `autos_vehicles` | `vehicle_id`, `make`, `model`, `car_type`, `transmission`, `price_per_day`, `supplier_id`, `depot_id`, `status` (`AVAILABLE`/`RESERVED`) | Catálogo administrable (31 autos base); fuente de verdad para `/search` y `/details`. Un auto `RESERVED` no se puede volver a reservar hasta que el admin lo marque `AVAILABLE`. |
+| `Vehicle` | `autos_vehicles` | `vehicle_id`, `make`, `model`, `car_type`, `transmission`, `price_per_day`, `supplier_id`, `depot_id`, `status` (`AVAILABLE`/`RESERVED`), `min_driver_age` | Catálogo administrable (31 autos base); fuente de verdad para `/search` y `/details`. Un auto `RESERVED` no se puede volver a reservar hasta que el admin lo marque `AVAILABLE`. |
 | `Depot` | `autos_depots` | `depot_id`, `name`, `city_id`, `airport`, `score` | Agencias de recogida/entrega. |
 | `Supplier` | `autos_suppliers` | `supplier_id`, `name` | Proveedores de renta. |
 | `Order` | `autos_orders` | `locator`, `status`, `vehicle_details` (jsonb), `route_details` (jsonb), `extras`, `total_price`, `currency` | Snapshot del vehículo/ruta al momento de la reserva; persiste el ciclo de vida completo (CONFIRMED/CANCELLED). |
@@ -72,6 +72,10 @@ Los estados efímeros del flujo de reserva (`search_token`, `hold_id`, `order_pr
 - Al crear la orden el auto pasa a `RESERVED` de forma atómica (`UPDATE ... WHERE status='AVAILABLE'`): si dos clientes intentan reservarlo a la vez, solo uno gana y el otro recibe 409 `CAR_NO_LONGER_AVAILABLE` (y su pago se marca `REFUNDED`).
 - `/search` devuelve los autos reservados con `available: false`; la web los muestra como "Reservado" y no deja seleccionarlos. `hold`, `preview` y `payments` también rechazan autos reservados.
 - Cancelar una orden libera el auto y reembolsa (simulado) el pago. El admin también puede liberar/bloquear un auto: `POST /admin/vehicles/:id/release` y `/reserve`.
+
+### 4.1.2 Edad mínima del conductor
+
+Cada vehículo tiene `min_driver_age` (21 por defecto; 25 para SUV; editable desde el admin). Si `driver.age` de la búsqueda es menor, `hold`, `preview` y `payments` responden 409 `DRIVER_AGE_RESTRICTION` (código definido en el contrato). `/search` y `/details` devuelven `min_driver_age`; la web muestra la insignia "Desde N años" y deshabilita esos autos.
 
 ### 4.2 Backoffice de administración (no forma parte del contrato)
 

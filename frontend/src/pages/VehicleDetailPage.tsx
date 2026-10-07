@@ -14,7 +14,7 @@ import { EXTRAS_CATALOG } from '../lib/extras-catalog';
 export function VehicleDetailPage() {
   const { vehicleId } = useParams<{ vehicleId: string }>();
   const navigate = useNavigate();
-  const { searchResponse, detailsById, setHoldId, setPreview } = useBooking();
+  const { searchRequest, searchResponse, detailsById, setHoldId, setPreview } = useBooking();
   const [selectedExtras, setSelectedExtras] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +34,10 @@ export function VehicleDetailPage() {
       </PageContainer>
     );
   }
+
+  const driverAge = searchRequest?.driver.age ?? 0;
+  const underAge = driverAge < result.min_driver_age;
+  const canBook = result.available && !underAge;
 
   function toggleExtra(id: string) {
     setSelectedExtras((prev) =>
@@ -136,6 +140,16 @@ export function VehicleDetailPage() {
           </div>
         </Card>
 
+        {result.available && underAge && (
+          <div
+            role="alert"
+            className="rounded-md border border-warning-600/30 bg-warning-50 px-4 py-3 text-sm font-medium text-warning-600"
+          >
+            Este auto exige un conductor de al menos {result.min_driver_age} años y el conductor
+            indicado tiene {driverAge}. Modifica la búsqueda o elige otro auto.
+          </div>
+        )}
+
         {!result.available && (
           <div
             role="alert"
@@ -150,11 +164,11 @@ export function VehicleDetailPage() {
         <Button
           size="lg"
           loading={loading}
-          disabled={!result.available}
+          disabled={!canBook}
           onClick={handleContinue}
           className="self-start px-10"
         >
-          {result.available ? 'Continuar con la reserva' : 'Auto reservado'}
+          {!result.available ? 'Auto reservado' : underAge ? 'Edad no permitida' : 'Continuar con la reserva'}
         </Button>
       </div>
     </PageContainer>
