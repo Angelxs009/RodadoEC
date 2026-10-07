@@ -3,9 +3,8 @@ import {
   Param, ParseUUIDPipe, Post, UseGuards,
 } from '@nestjs/common';
 import {
-  ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiSecurity, ApiTags,
+  ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags,
 } from '@nestjs/swagger';
-import { RequireScopes, ScopesGuard } from '../../common/guards/scopes.guard';
 import { IdempotencyKeyGuard } from '../../common/guards/idempotency-key.guard';
 import { CustomerTokenService } from '../customers/auth/customer-token.service';
 import { AutosService } from './autos.service';
@@ -27,7 +26,6 @@ import { WebhookSubscriptionDto } from './dto/webhook.dto';
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Controller()
-@UseGuards(ScopesGuard)
 export class AutosController {
   constructor(
     private readonly autosService: AutosService,
@@ -138,9 +136,6 @@ export class AutosController {
 
   @Post('orders/hold')
   @ApiTags('Gestión de Órdenes (Reservas)')
-  @ApiSecurity('OAuth2Security', ['autos:book'])
-  @ApiBearerAuth()
-  @RequireScopes('autos:book')
   @ApiOperation({ summary: 'Bloquear temporalmente el vehículo y precio (Hold)' })
   @ApiResponse({ status: 200, description: 'Vehículo bloqueado exitosamente', type: OrderHoldResponseDto })
   @ApiResponse({ status: 400, description: 'Petición inválida' })
@@ -152,9 +147,6 @@ export class AutosController {
 
   @Post('orders/preview')
   @ApiTags('Gestión de Órdenes (Reservas)')
-  @ApiSecurity('OAuth2Security', ['autos:read'])
-  @ApiBearerAuth()
-  @RequireScopes('autos:read')
   @ApiOperation({ summary: 'Previsualizar la orden de renta antes de confirmar' })
   @ApiResponse({ status: 200, description: 'Detalles de la orden previsualizada y precios finales', type: OrderPreviewResponseDto })
   @HttpCode(HttpStatus.OK)
@@ -164,9 +156,6 @@ export class AutosController {
 
   @Post('orders/create')
   @ApiTags('Gestión de Órdenes (Reservas)')
-  @ApiSecurity('OAuth2Security', ['autos:book'])
-  @ApiBearerAuth()
-  @RequireScopes('autos:book')
   @ApiOperation({ summary: 'Crear orden/reserva de renta de vehículo' })
   @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'UUID v4 para evitar cobros duplicados' })
   @ApiResponse({ status: 201, description: 'Orden creada exitosamente', type: OrderDetailDto })
@@ -190,9 +179,6 @@ export class AutosController {
 
   @Get('orders/:orderId')
   @ApiTags('Gestión de Órdenes (Reservas)')
-  @ApiSecurity('OAuth2Security', ['autos:read'])
-  @ApiBearerAuth()
-  @RequireScopes('autos:read')
   @ApiOperation({ summary: 'Obtener detalles de la orden' })
   @ApiParam({ name: 'orderId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Detalles completos de la orden', type: OrderDetailDto })
@@ -203,9 +189,6 @@ export class AutosController {
 
   @Post('orders/:orderId/modify')
   @ApiTags('Gestión de Órdenes (Reservas)')
-  @ApiSecurity('OAuth2Security', ['autos:book'])
-  @ApiBearerAuth()
-  @RequireScopes('autos:book')
   @ApiOperation({ summary: 'Modificar una orden existente' })
   @ApiParam({ name: 'orderId', type: 'string', format: 'uuid' })
   @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'UUID v4 para evitar modificaciones duplicadas' })
@@ -223,9 +206,6 @@ export class AutosController {
 
   @Post('orders/:orderId/cancel')
   @ApiTags('Gestión de Órdenes (Reservas)')
-  @ApiSecurity('OAuth2Security', ['autos:cancel'])
-  @ApiBearerAuth()
-  @RequireScopes('autos:cancel')
   @ApiOperation({ summary: 'Cancelar una orden de renta' })
   @ApiParam({ name: 'orderId', type: 'string', format: 'uuid' })
   @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'UUID v4 para evitar cancelaciones duplicadas' })
@@ -246,9 +226,6 @@ export class AutosController {
 
   @Get('webhooks')
   @ApiTags('Webhooks')
-  @ApiSecurity('OAuth2Security', ['autos:webhooks'])
-  @ApiBearerAuth()
-  @RequireScopes('autos:webhooks')
   @ApiOperation({ summary: 'Listar suscripciones a eventos' })
   @ApiResponse({ status: 200, description: 'Suscripciones activas' })
   listWebhooks() {
@@ -257,9 +234,6 @@ export class AutosController {
 
   @Post('webhooks')
   @ApiTags('Webhooks')
-  @ApiSecurity('OAuth2Security', ['autos:webhooks'])
-  @ApiBearerAuth()
-  @RequireScopes('autos:webhooks')
   @ApiOperation({ summary: 'Registrar un nuevo webhook' })
   @ApiResponse({ status: 201, description: 'Webhook registrado' })
   @HttpCode(HttpStatus.CREATED)
@@ -269,9 +243,6 @@ export class AutosController {
 
   @Delete('webhooks/:id')
   @ApiTags('Webhooks')
-  @ApiSecurity('OAuth2Security', ['autos:webhooks'])
-  @ApiBearerAuth()
-  @RequireScopes('autos:webhooks')
   @ApiOperation({ summary: 'Eliminar suscripción de webhook' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Suscripción eliminada' })
