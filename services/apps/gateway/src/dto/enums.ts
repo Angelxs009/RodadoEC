@@ -1,0 +1,20 @@
+/** Enumeraciones del contrato REST (las comparten los DTOs del gateway). */
+export enum VehicleStatus {
+  AVAILABLE = 'AVAILABLE',
+  RESERVED = 'RESERVED',
+}
+
+export enum OrderStatus {
+  CONFIRMED = 'CONFIRMED',
+  CANCELLED = 'CANCELLED',
+  PENDING = 'PENDING',
+}
+
+export enum WebhookEvent {
+  CAR_ORDER_CONFIRMED = 'CAR_ORDER_CONFIRMED',
+  CAR_ORDER_CANCELLED = 'CAR_ORDER_CANCELLED',
+  CAR_PAYMENT_APPROVED = 'CAR_PAYMENT_APPROVED',
+  CAR_VEHICLE_RESERVED = 'CAR_VEHICLE_RESERVED',
+  CAR_VEHICLE_RELEASED = 'CAR_VEHICLE_RELEASED',
+  DEPOT_UPDATE = 'DEPOT_UPDATE',
+}
