@@ -1,0 +1,197 @@
+import {
+  applyDecorators,
+  ArgumentsHost,
+  CallHandler,
+  Catch,
+  Controller,
+  ExecutionContext,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NestInterceptor,
+  UseFilters,
+  UseInterceptors,
+} from '@nestjs/common';
+import { ClientGrpc, GrpcOptions, RpcException, Transport } from '@nestjs/microservices';
+import { ChannelCredentials, Metadata, status } from '@grpc/grpc-js';
+import { existsSync } from 'fs';
+import { dirname, join } from 'path';
+import { firstValueFrom, Observable, throwError } from 'rxjs';
+import { CORRELATION_HEADER, currentCorrelationId, runWithCorrelation } from './correlation';
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Contratos .proto
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Carpeta contracts/proto: se busca hacia arriba (repo, imagen Docker) o se toma de PROTO_DIR. */
+export function protoDir(): string {
+  if (process.env.PROTO_DIR) return process.env.PROTO_DIR;
+  let dir = __dirname;
+  for (let i = 0; i < 10; i++) {
+    const candidate = join(dir, 'contracts', 'proto');
+    if (existsSync(candidate)) return candidate;
+    dir = dirname(dir);
+  }
+  return join(process.cwd(), '..', 'contracts', 'proto');
+}
+
+function loader() {
+  return { keepCase: true, longs: String, enums: String, defaults: true, oneofs: true, arrays: true, includeDirs: [protoDir()] };
+}
+
+export function grpcServerOptions(pkg: string, protoFile: string, port: number | string): GrpcOptions {
+  return {
+    transport: Transport.GRPC,
+    options: {
+      package: pkg,
+      protoPath: join(protoDir(), protoFile),
+      url: `0.0.0.0:${port}`,
+      loader: loader(),
+    },
+  };
+}
+
+export function grpcClientOptions(pkg: string, protoFile: string, url: string): GrpcOptions {
+  const tls = /^(1|true)$/i.test(process.env.GRPC_TLS ?? '');
+  return {
+    transport: Transport.GRPC,
+    options: {
+      package: pkg,
+      protoPath: join(protoDir(), protoFile),
+      url,
+      loader: loader(),
+      ...(tls ? { credentials: ChannelCredentials.createSsl() } : {}),
+      channelOptions: { 'grpc.keepalive_time_ms': 30000, 'grpc.keepalive_permit_without_calls': 1 },
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Errores: ProblemDetails (application/problem+json) <-> gRPC status
+// ─────────────────────────────────────────────────────────────────────────────
+
+function httpToGrpc(httpStatus: number): number {
+  switch (httpStatus) {
+    case 400:
+      return status.INVALID_ARGUMENT;
+    case 401:
+      return status.UNAUTHENTICATED;
+    case 402:
+      return status.FAILED_PRECONDITION;
+    case 403:
+      return status.PERMISSION_DENIED;
+    case 404:
+      return status.NOT_FOUND;
+    case 409:
+      return status.ABORTED;
+    case 503:
+      return status.UNAVAILABLE;
+    default:
+      return status.INTERNAL;
+  }
+}
+
+/** Server: convierte cualquier error en un RpcException que lleva el ProblemDetails como JSON. */
+export function toRpcException(e: unknown): RpcException {
+  if (e instanceof RpcException) return e;
+  if (e instanceof HttpException) {
+    const httpStatus = e.getStatus();
+    const body = e.getResponse();
+    const problem =
+      typeof body === 'object' && body !== null
+        ? { ...(body as object), status: httpStatus }
+        : { type: 'about:blank', title: String(body), status: httpStatus, detail: String(body), code: 'ERROR' };
+    return new RpcException({ code: httpToGrpc(httpStatus), message: JSON.stringify(problem) });
+  }
+  const message = e instanceof Error ? e.message : String(e);
+  return new RpcException({
+    code: status.INTERNAL,
+    message: JSON.stringify({
+      type: 'about:blank',
+      title: 'Error interno',
+      status: 500,
+      detail: message,
+      code: 'INTERNAL',
+    }),
+  });
+}
+
+/** Client: reconstruye la HttpException (ProblemDetails) a partir del error gRPC. */
+export function fromRpcError(err: any): HttpException {
+  if (err instanceof HttpException) return err;
+  const raw: string | undefined = typeof err?.details === 'string' ? err.details : err?.message;
+  if (raw) {
+    try {
+      const problem = JSON.parse(raw);
+      if (problem && typeof problem === 'object' && problem.status) {
+        return new HttpException(problem, Number(problem.status));
+      }
+    } catch {
+      /* no era JSON: se trata como error de transporte */
+    }
+  }
+  const unavailable = err?.code === status.UNAVAILABLE || err?.code === status.DEADLINE_EXCEEDED;
+  const httpStatus = unavailable ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.BAD_GATEWAY;
+  return new HttpException(
+    {
+      type: 'https://api.booking-hub.com/errors/service-unavailable',
+      title: unavailable ? 'Servicio no disponible' : 'Error en un servicio interno',
+      status: httpStatus,
+      detail: err?.details || err?.message || 'Fallo la comunicación con un microservicio.',
+      code: unavailable ? 'SERVICE_UNAVAILABLE' : 'UPSTREAM_ERROR',
+    },
+    httpStatus,
+  );
+}
+
+@Catch()
+export class GrpcProblemFilter {
+  catch(exception: unknown, _host: ArgumentsHost): Observable<never> {
+    return throwError(() => toRpcException(exception).getError());
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Correlation ID en el servidor gRPC
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Injectable()
+export class CorrelationRpcInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const md = context.switchToRpc().getContext() as Metadata;
+    const cid = md?.get?.(CORRELATION_HEADER)?.[0] as string | undefined;
+    return new Observable((subscriber) => {
+      const sub = runWithCorrelation(cid, () => next.handle().subscribe(subscriber));
+      return () => sub.unsubscribe();
+    });
+  }
+}
+
+/** Decorador de clase para los controladores gRPC: filtro de errores + correlation id. */
+export const GrpcController = () =>
+  applyDecorators(Controller(), UseFilters(GrpcProblemFilter), UseInterceptors(CorrelationRpcInterceptor));
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Cliente gRPC tipado con correlation id y errores ya traducidos
+// ─────────────────────────────────────────────────────────────────────────────
+
+export class GrpcCaller {
+  private svc: any;
+
+  constructor(
+    private readonly client: ClientGrpc,
+    private readonly serviceName: string,
+  ) {}
+
+  async call<T = any>(method: string, data: object = {}): Promise<T> {
+    this.svc ??= this.client.getService<any>(this.serviceName);
+    const metadata = new Metadata();
+    const cid = currentCorrelationId();
+    if (cid) metadata.set(CORRELATION_HEADER, cid);
+    try {
+      return await firstValueFrom<T>(this.svc[method](data, metadata));
+    } catch (err) {
+      throw fromRpcError(err);
+    }
+  }
+}

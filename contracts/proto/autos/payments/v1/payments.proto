@@ -1,0 +1,59 @@
+// Servicio de Pagos (pasarela SIMULADA). Nunca guarda el número completo de tarjeta ni el CVV.
+syntax = "proto3";
+
+package autos.payments.v1;
+
+import "autos/common/v1/common.proto";
+
+service PaymentsService {
+  // Cobra. Si la tarjeta se rechaza, el pago queda DECLINED y la llamada falla con
+  // FAILED_PRECONDITION (el detalle viaja como ProblemDetails JSON en el mensaje de error).
+  rpc Charge(ChargeRequest) returns (Payment);
+  rpc GetPayment(PaymentRef) returns (Payment);
+  // Liga un pago aprobado a una orden (un pago = una orden).
+  rpc Consume(ConsumeRequest) returns (Payment);
+  rpc Refund(PaymentRef) returns (Payment);
+  // Reembolsa el pago ligado a una orden (compensación al cancelar).
+  rpc RefundByOrder(OrderRef) returns (autos.common.v1.Empty);
+}
+
+message Card {
+  string holder_name = 1;
+  string number = 2;
+  int32 expiry_month = 3;
+  int32 expiry_year = 4;
+  string cvv = 5;
+}
+
+message ChargeRequest {
+  string order_preview_id = 1;
+  double amount = 2;
+  string currency = 3;
+  Card card = 4;
+}
+
+message Payment {
+  string payment_reference = 1;
+  string status = 2; // APPROVED | DECLINED | REFUNDED
+  double amount = 3;
+  string currency = 4;
+  string card_brand = 5;
+  string card_last4 = 6;
+  string created_at = 7;
+  string order_id = 8;
+  string order_preview_id = 9;
+  string decline_reason = 10;
+}
+
+message PaymentRef {
+  string payment_reference = 1;
+}
+
+message ConsumeRequest {
+  string payment_reference = 1;
+  string order_id = 2;
+}
+
+message OrderRef {
+  string order_id = 1;
+}

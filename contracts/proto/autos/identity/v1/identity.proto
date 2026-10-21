@@ -1,0 +1,92 @@
+// Servicio de Identidad: administradores y clientes, contraseñas (scrypt) y emisión de JWT (HS256).
+syntax = "proto3";
+
+package autos.identity.v1;
+
+import "autos/common/v1/common.proto";
+
+service IdentityService {
+  rpc RegisterCustomer(RegisterCustomerRequest) returns (CustomerAuthResponse);
+  rpc LoginCustomer(LoginRequest) returns (CustomerAuthResponse);
+  rpc GetCustomer(CustomerRef) returns (CustomerProfile);
+  rpc LoginAdmin(LoginRequest) returns (TokenResponse);
+  // Valida un token (admin o cliente) y devuelve quién es. Falla con UNAUTHENTICATED si no es válido.
+  rpc VerifyToken(TokenRequest) returns (Principal);
+
+  rpc ListUsers(autos.common.v1.Empty) returns (UserList);
+  rpc CreateUser(CreateUserRequest) returns (UserAccount);
+  rpc DeleteUser(DeleteUserRequest) returns (autos.common.v1.Empty);
+}
+
+message LoginRequest {
+  string login = 1;    // username (admin) o email (cliente)
+  string password = 2;
+}
+
+message RegisterCustomerRequest {
+  string email = 1;
+  string password = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string phone_number = 5;
+}
+
+message CustomerProfile {
+  string id = 1;
+  string email = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string phone_number = 5;
+}
+
+message CustomerAuthResponse {
+  string token = 1;
+  CustomerProfile profile = 2;
+}
+
+message TokenResponse {
+  string token = 1;
+}
+
+message TokenRequest {
+  string token = 1;
+}
+
+message Principal {
+  string subject = 1; // id del cliente o username del admin
+  string role = 2;    // ADMIN | CUSTOMER
+}
+
+message CustomerRef {
+  string id = 1;
+}
+
+message UserAccount {
+  string id = 1;        // vacío en el administrador de arranque (variables de entorno)
+  string role = 2;      // ADMIN | CUSTOMER
+  string login = 3;
+  string first_name = 4;
+  string last_name = 5;
+  string phone_number = 6;
+  string created_at = 7;
+  bool protected = 8;   // true = cuenta de arranque, no se puede eliminar
+}
+
+message UserList {
+  repeated UserAccount users = 1;
+}
+
+message CreateUserRequest {
+  string role = 1;
+  string username = 2;
+  string email = 3;
+  string password = 4;
+  string first_name = 5;
+  string last_name = 6;
+  string phone_number = 7;
+}
+
+message DeleteUserRequest {
+  string role = 1;
+  string id = 2;
+}

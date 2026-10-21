@@ -1,0 +1,81 @@
+# Subgrafo federado GraphQL del dominio Autos (Reto 3 - Apollo Federation). Versión del contrato: ver CHANGELOG.md.
+#
+# Se publica en POST /graphql del API Gateway de Autos. Un gateway central (Apollo Gateway/Router) lo
+# compone con los subgrafos de los otros dominios del Booking (Alojamientos, Atracciones, Vuelos).
+# Las entidades llevan @key para que otros subgrafos puedan extenderlas (por ejemplo, un subgrafo de
+# Reservas globales que agregue campos a `Orden`).
+#
+# Convenciones: camelCase en español (igual que el esquema de ejemplo de Atracciones).
+# Compatibilidad: solo se agregan campos/tipos opcionales (MINOR). Quitar o renombrar un campo es MAJOR
+# y exige publicar un esquema nuevo (autos.v2.graphql); mientras tanto un campo viejo se marca @deprecated.
+
+enum EstadoVehiculo {
+  DISPONIBLE
+  RESERVADO
+}
+
+enum EstadoOrden {
+  CONFIRMADA
+  CANCELADA
+  PENDIENTE
+}
+
+type Proveedor {
+  id: ID!
+  nombre: String!
+}
+
+type Agencia @key(fields: "id") {
+  id: ID!
+  nombre: String!
+  ciudadId: Int!
+  ciudad: String!
+  aeropuerto: String
+  puntuacion: Float
+  vehiculos: [Vehiculo!]!
+}
+
+type Vehiculo @key(fields: "id") {
+  id: ID!
+  marca: String!
+  modelo: String!
+  tipo: String!
+  transmision: String!
+  puertas: Int!
+  maletas: Int!
+  asientos: Int!
+  precioPorDia: Float!
+  imagenUrl: String
+  estado: EstadoVehiculo!
+  edadMinima: Int!
+  agencia: Agencia!
+  proveedor: Proveedor!
+}
+
+type Orden @key(fields: "id") {
+  id: ID!
+  codigo: String!
+  estado: EstadoOrden!
+  vehiculo: Vehiculo!
+  total: Float!
+  moneda: String!
+  extras: [String!]!
+  recogida: String
+  entrega: String
+  clienteId: ID
+  fechaCreacion: String!
+}
+
+extend type Query {
+  "Autos de la ciudad o aeropuerto indicados. Sin filtros devuelve todo el catálogo."
+  vehiculos(ciudadId: Int, aeropuerto: String, tipos: [String!], transmision: [String!]): [Vehiculo!]!
+  vehiculo(id: ID!): Vehiculo
+  agencias: [Agencia!]!
+  orden(id: ID!): Orden
+  ordenes(estado: EstadoOrden, clienteId: ID): [Orden!]!
+}
+
+extend type Mutation {
+  "Cancela una orden confirmada (libera el auto y reembolsa el pago simulado)."
+  cancelarOrden(id: ID!): Orden!
+}

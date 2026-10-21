@@ -1,0 +1,122 @@
+// Servicio de Catálogo: autos, agencias (depots) y proveedores. Dueño de la disponibilidad del auto.
+syntax = "proto3";
+
+package autos.catalog.v1;
+
+import "autos/common/v1/common.proto";
+
+service CatalogService {
+  // ── Consulta (contrato público) ───────────────────────────────────────
+  // Autos de las agencias de la ubicación de recogida (sin ubicación = todo el catálogo).
+  rpc Search(SearchRequest) returns (VehicleList);
+  rpc GetVehicles(GetVehiclesRequest) returns (VehicleList);
+  rpc ListDepots(autos.common.v1.Empty) returns (DepotList);
+  rpc ListSuppliers(SuppliersRequest) returns (SupplierList);
+  rpc GetConstants(ConstantsRequest) returns (ConstantsResponse);
+
+  // ── Disponibilidad (la usa el servicio de Reservas) ───────────────────
+  // Reserva atómica: AVAILABLE -> RESERVED. reserved=false si ya no estaba libre.
+  rpc ReserveVehicle(VehicleRef) returns (ReserveResult);
+  rpc ReleaseVehicle(VehicleRef) returns (autos.common.v1.Empty);
+
+  // ── Administración ────────────────────────────────────────────────────
+  rpc AdminListVehicles(autos.common.v1.Empty) returns (VehicleList);
+  rpc AdminCreateVehicle(VehicleInput) returns (autos.common.v1.Vehicle);
+  rpc AdminUpdateVehicle(UpdateVehicleRequest) returns (autos.common.v1.Vehicle);
+  rpc AdminSetVehicleStatus(SetStatusRequest) returns (autos.common.v1.Vehicle);
+  rpc AdminDeleteVehicle(IdRef) returns (autos.common.v1.Empty);
+  rpc AdminListDepots(autos.common.v1.Empty) returns (DepotList);
+  rpc AdminCreateDepot(DepotInput) returns (autos.common.v1.Depot);
+  rpc AdminUpdateDepot(UpdateDepotRequest) returns (autos.common.v1.Depot);
+  rpc AdminDeleteDepot(IdRef) returns (autos.common.v1.Empty);
+}
+
+message SearchRequest {
+  autos.common.v1.Location pickup_location = 1;
+  repeated string car_types = 2;     // vacío = todos
+  repeated string transmission = 3;  // vacío = todas
+  int32 limit = 4;                   // 0 = 100
+}
+
+message GetVehiclesRequest {
+  repeated string vehicle_ids = 1; // vacío = todos
+}
+
+message VehicleList {
+  repeated autos.common.v1.Vehicle vehicles = 1;
+}
+
+message DepotList {
+  repeated autos.common.v1.Depot depots = 1;
+}
+
+message SuppliersRequest {
+  repeated int32 supplier_ids = 1; // vacío = todos
+}
+
+message SupplierList {
+  repeated autos.common.v1.Supplier suppliers = 1;
+}
+
+message ConstantsRequest {
+  repeated string constants = 1; // vacío = todas
+}
+
+message ConstantsResponse {
+  string data_json = 1; // objeto JSON {clave: valor}; las constantes son de forma libre
+}
+
+message VehicleRef {
+  string vehicle_id = 1;
+}
+
+message ReserveResult {
+  bool reserved = 1;
+}
+
+message IdRef {
+  string id = 1;
+}
+
+message VehicleInput {
+  string vehicle_id = 1;
+  string make = 2;
+  string model = 3;
+  string car_type = 4;
+  string transmission = 5;
+  int32 doors = 6;
+  int32 bag_capacity = 7;
+  int32 seats = 8;
+  double price_per_day = 9;
+  int32 supplier_id = 10;
+  int32 depot_id = 11;
+  string image_url = 12;
+  string status = 13;
+  int32 min_driver_age = 14; // 0 = valor por defecto
+}
+
+// fields lista los campos de `patch` que se deben aplicar (máscara de actualización).
+message UpdateVehicleRequest {
+  string id = 1;
+  VehicleInput patch = 2;
+  repeated string fields = 3;
+}
+
+message SetStatusRequest {
+  string id = 1;
+  string status = 2; // AVAILABLE | RESERVED
+}
+
+message DepotInput {
+  int32 depot_id = 1;
+  string name = 2;
+  int32 city_id = 3;
+  string airport = 4;
+  double score = 5;
+}
+
+message UpdateDepotRequest {
+  string id = 1;
+  DepotInput patch = 2;
+  repeated string fields = 3;
+}

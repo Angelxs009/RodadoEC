@@ -1,0 +1,69 @@
+// Tipos compartidos del dominio Autos (contrato gRPC, versión 1).
+// Convenciones:
+//  - Los nombres de campo van en snake_case, igual que el contrato REST (autos-openapi.yaml).
+//  - En proto3 no hay "nulo": un string vacío, 0 o false significan "no definido" salvo que se indique lo contrario.
+//  - Cambios compatibles (MINOR): agregar campos con número nuevo. Cambios que rompen (MAJOR):
+//    reutilizar/renumerar/eliminar campos => crear autos.common.v2 en vez de mutar este archivo.
+syntax = "proto3";
+
+package autos.common.v1;
+
+message Empty {}
+
+message Location {
+  string airport = 1; // código IATA, vacío = no definido
+  int32 city_id = 2;  // 0 = no definido
+}
+
+message RouteEndpoint {
+  string datetime = 1; // ISO-8601
+  Location location = 2;
+}
+
+message Route {
+  RouteEndpoint pickup = 1;
+  RouteEndpoint dropoff = 2;
+}
+
+message Driver {
+  int32 age = 1;
+}
+
+message DriverDetails {
+  string first_name = 1;
+  string last_name = 2;
+  string email = 3;
+  string phone_number = 4;
+}
+
+message Vehicle {
+  string id = 1;          // uuid interno
+  string vehicle_id = 2;  // id público (veh-001)
+  string make = 3;
+  string model = 4;
+  string car_type = 5;
+  string transmission = 6;
+  int32 doors = 7;
+  int32 bag_capacity = 8;
+  int32 seats = 9;
+  double price_per_day = 10;
+  int32 supplier_id = 11;
+  int32 depot_id = 12;
+  string image_url = 13;
+  string status = 14;       // AVAILABLE | RESERVED
+  int32 min_driver_age = 15; // siempre resuelto (por defecto 18)
+}
+
+message Depot {
+  string id = 1;
+  int32 depot_id = 2;
+  string name = 3;
+  int32 city_id = 4;
+  string airport = 5;
+  double score = 6;
+}
+
+message Supplier {
+  int32 supplier_id = 1;
+  string name = 2;
+}
