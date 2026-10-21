@@ -1,4 +1,5 @@
 # Subgrafo federado GraphQL del dominio Autos (Reto 3 - Apollo Federation). Versión del contrato: ver CHANGELOG.md.
+# version: 1.0.0
 #
 # Se publica en POST /graphql del API Gateway de Autos. Un gateway central (Apollo Gateway/Router) lo
 # compone con los subgrafos de los otros dominios del Booking (Alojamientos, Atracciones, Vuelos).

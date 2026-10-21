@@ -1,0 +1,9 @@
+{
+  "rootDir": ".",
+  "testRegex": ".*\\.integration\\.ts$",
+  "transform": {
+    "^.+\\.ts$": ["ts-jest", { "tsconfig": { "target": "ES2021", "module": "commonjs", "esModuleInterop": true, "types": ["jest", "node"] }, "diagnostics": false }]
+  },
+  "testEnvironment": "node",
+  "testTimeout": 60000
+}
