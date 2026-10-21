@@ -40,11 +40,20 @@ export async function bootstrapService(o: ServiceOptions): Promise<void> {
   if (o.schema) await ensureSchema(o.schema);
 
   const app = await NestFactory.create(o.module, { logger });
-  const grpcPort = process.env.GRPC_PORT ?? o.defaultGrpcPort;
+  // GRPC_ON_PORT=true (Render): la plataforma expone un único puerto por servicio y termina TLS en su borde,
+  // así que el servidor gRPC escucha directamente en $PORT y no se levanta el HTTP de /health.
+  const grpcOnPort = /^(1|true)$/i.test(process.env.GRPC_ON_PORT ?? '') && !!process.env.PORT;
+  const grpcPort = grpcOnPort ? process.env.PORT! : (process.env.GRPC_PORT ?? o.defaultGrpcPort);
   app.connectMicroservice<MicroserviceOptions>(grpcServerOptions(o.grpcPackage, o.protoFile, grpcPort), {
     inheritAppConfig: true,
   });
   await app.startAllMicroservices();
+
+  if (grpcOnPort) {
+    await app.init();
+    logger.log(`${o.name} listo: gRPC :${grpcPort} (modo puerto único)`, 'bootstrap');
+    return;
+  }
 
   const httpPort = Number(process.env.PORT ?? o.defaultHttpPort);
   await app.listen(httpPort, '0.0.0.0');

@@ -1,0 +1,78 @@
+# Sistema distribuido completo en local: Postgres + 4 microservicios (gRPC) + API Gateway.
+#   docker compose up --build        →  Gateway en http://localhost:3000  (Swagger /api/docs · GraphQL /graphql)
+# El monolito original sigue en backend/docker-compose.yml.
+x-service: &service
+  build:
+    context: .
+    dockerfile: services/Dockerfile
+  restart: unless-stopped
+  depends_on:
+    db:
+      condition: service_healthy
+  environment: &env
+    DATABASE_URL: postgres://rodadoec:rodadoec@db:5432/rodadoec
+    DATABASE_SSL: "false"
+    NODE_ENV: development
+    ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+    ADMIN_PASSWORD: ${ADMIN_PASSWORD:-rodadoec2026}
+    ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-dev-admin-secret-cambiar}
+    CUSTOMER_JWT_SECRET: ${CUSTOMER_JWT_SECRET:-dev-customer-secret-cambiar}
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rodadoec
+      POSTGRES_PASSWORD: rodadoec
+      POSTGRES_DB: rodadoec
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rodadoec"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  identity:
+    <<: *service
+    build: { context: ., dockerfile: services/Dockerfile, args: { APP: identity } }
+    environment: { <<: *env, PORT: "3000", GRPC_PORT: "50054" }
+
+  catalog:
+    <<: *service
+    build: { context: ., dockerfile: services/Dockerfile, args: { APP: catalog } }
+    environment: { <<: *env, PORT: "3000", GRPC_PORT: "50051" }
+
+  payments:
+    <<: *service
+    build: { context: ., dockerfile: services/Dockerfile, args: { APP: payments } }
+    environment: { <<: *env, PORT: "3000", GRPC_PORT: "50053" }
+
+  booking:
+    <<: *service
+    build: { context: ., dockerfile: services/Dockerfile, args: { APP: booking } }
+    environment:
+      <<: *env
+      PORT: "3000"
+      GRPC_PORT: "50052"
+      CATALOG_GRPC_URL: catalog:50051
+      PAYMENTS_GRPC_URL: payments:50053
+    depends_on: [catalog, payments]
+
+  gateway:
+    <<: *service
+    build: { context: ., dockerfile: services/Dockerfile, args: { APP: gateway } }
+    ports: ["3000:3000"]
+    environment:
+      <<: *env
+      PORT: "3000"
+      CATALOG_GRPC_URL: catalog:50051
+      BOOKING_GRPC_URL: booking:50052
+      PAYMENTS_GRPC_URL: payments:50053
+      IDENTITY_GRPC_URL: identity:50054
+      AUTH_ENFORCE_ADMIN: ${AUTH_ENFORCE_ADMIN:-false}
+      AUTH_ENFORCE_CUSTOMER: ${AUTH_ENFORCE_CUSTOMER:-false}
+    depends_on: [catalog, booking, payments, identity]
+
+volumes:
+  pgdata:

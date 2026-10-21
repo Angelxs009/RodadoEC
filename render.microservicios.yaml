@@ -1,0 +1,97 @@
+# Blueprint del sistema distribuido (Reto 2). Se usa creando un Blueprint en Render y eligiendo ESTE archivo
+# (el render.yaml original sigue describiendo el monolito, que permanece en línea hasta validar este sistema).
+#
+# Topología: Vercel (frontend) → rodadoec-gateway (REST + GraphQL) ──gRPC/TLS──> catalog · booking · payments · identity
+# Booking llama además a catalog y payments (saga). Un solo Postgres con un schema por servicio.
+#
+# En el plan gratis Render expone un único puerto por servicio y termina TLS en su borde: por eso los
+# microservicios corren en modo GRPC_ON_PORT (gRPC directamente en $PORT) y se llaman por <host>:443 con GRPC_TLS=true.
+# Si algún nombre de servicio ya está tomado en Render, cámbialo aquí y en las variables *_GRPC_URL.
+
+databases:
+  - name: rodadoec-ms-db
+    plan: free
+    postgresMajorVersion: "16"
+
+envVarGroups:
+  - name: rodadoec-secrets          # mismos secretos en gateway e identity (el gateway valida lo que identity firma)
+    envVars:
+      - key: ADMIN_JWT_SECRET
+        generateValue: true
+      - key: CUSTOMER_JWT_SECRET
+        generateValue: true
+
+services:
+  - type: web
+    name: rodadoec-catalog
+    runtime: docker
+    dockerfilePath: ./services/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - { key: APP, value: catalog }
+      - { key: GRPC_ON_PORT, value: "true" }
+      - { key: NODE_ENV, value: production }
+      - { key: DATABASE_URL, fromDatabase: { name: rodadoec-ms-db, property: connectionString } }
+
+  - type: web
+    name: rodadoec-payments
+    runtime: docker
+    dockerfilePath: ./services/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - { key: APP, value: payments }
+      - { key: GRPC_ON_PORT, value: "true" }
+      - { key: NODE_ENV, value: production }
+      - { key: DATABASE_URL, fromDatabase: { name: rodadoec-ms-db, property: connectionString } }
+
+  - type: web
+    name: rodadoec-identity
+    runtime: docker
+    dockerfilePath: ./services/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - { key: APP, value: identity }
+      - { key: GRPC_ON_PORT, value: "true" }
+      - { key: NODE_ENV, value: production }
+      - { key: DATABASE_URL, fromDatabase: { name: rodadoec-ms-db, property: connectionString } }
+      - { key: ADMIN_USERNAME, sync: false }
+      - { key: ADMIN_PASSWORD, sync: false }
+      - fromGroup: rodadoec-secrets
+
+  - type: web
+    name: rodadoec-booking
+    runtime: docker
+    dockerfilePath: ./services/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - { key: APP, value: booking }
+      - { key: GRPC_ON_PORT, value: "true" }
+      - { key: NODE_ENV, value: production }
+      - { key: DATABASE_URL, fromDatabase: { name: rodadoec-ms-db, property: connectionString } }
+      - { key: GRPC_TLS, value: "true" }
+      - { key: CATALOG_GRPC_URL, value: "rodadoec-catalog.onrender.com:443" }
+      - { key: PAYMENTS_GRPC_URL, value: "rodadoec-payments.onrender.com:443" }
+
+  - type: web
+    name: rodadoec-gateway
+    runtime: docker
+    dockerfilePath: ./services/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - { key: APP, value: gateway }
+      - { key: NODE_ENV, value: production }
+      - { key: GRPC_TLS, value: "true" }
+      - { key: CATALOG_GRPC_URL, value: "rodadoec-catalog.onrender.com:443" }
+      - { key: BOOKING_GRPC_URL, value: "rodadoec-booking.onrender.com:443" }
+      - { key: PAYMENTS_GRPC_URL, value: "rodadoec-payments.onrender.com:443" }
+      - { key: IDENTITY_GRPC_URL, value: "rodadoec-identity.onrender.com:443" }
+      - { key: CORS_ORIGINS, sync: false }
+      - { key: AUTH_ENFORCE_ADMIN, value: "false" }     # "true" → /admin exige JWT de ADMIN
+      - { key: AUTH_ENFORCE_CUSTOMER, value: "false" }  # "true" → /auth/me y /me/orders exigen JWT de CLIENTE
+      - fromGroup: rodadoec-secrets
