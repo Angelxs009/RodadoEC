@@ -49,7 +49,7 @@ export interface CarDetailsResult {
   bag_capacity: number;
   seats: number;
   image_url?: string | null;
-  status?: 'AVAILABLE' | 'RESERVED';
+  status?: 'AVAILABLE' | 'RESERVED' | 'READY_FOR_DELIVERY' | 'DELIVERED' | 'CLEANING' | 'MAINTENANCE';
   min_driver_age?: number;
   depot_id?: number;
 }

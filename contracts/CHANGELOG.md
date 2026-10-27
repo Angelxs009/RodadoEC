@@ -40,6 +40,7 @@ La v1 sigue en `/api/v1` sin cambios de ruta ni de forma (compatibilidad hacia a
 - Mantenimiento preventivo con RBAC (`X-Role`: MANTENIMIENTO o ADMIN) y bitácora `BIT-AUTO-nn`.
 - Acuerdo B2B de promociones (`/promociones/contrato`), telemetría (`/health`, `/flota`) y feed Outbox de CloudEvents (`/eventos`).
 - Errores RFC 7807 con `instance`, `correlation_id`, `timestamp` e `invalid_params`; edad menor de 18 → 422; recargo por conductor <25 o >70 años.
+- Eventos hacia RabbitMQ (`booking.events`) y Kafka (`topic-ordenes-b2b`) como CloudEvents, con relay del outbox y reintentos.
 - Seguridad: JWT o `X-API-Key` (`AUTH_ENFORCE_V2=true` la exige; apagada por defecto para probar en Swagger).
 - gRPC hacia Booking: cada cambio de stock se empuja con `PushStockUpdate` y la flota completa con `StreamInventoryChanges` (`INVENTORY_GRPC_URL`).
 - gRPC interno (MINOR, solo se agregaron campos y RPCs; nada se renumeró): `Vehicle` (+odómetro, mantenimiento, fin de cooldown), `Order` (+cobertura, depósito, km, check-in, reembolso), `CatalogService.TransitionVehicle/RecordMaintenance`, `BookingService` (+10 RPCs v2), `ChargeRequest.channel`.

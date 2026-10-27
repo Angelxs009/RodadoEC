@@ -82,6 +82,9 @@ services:
       - { key: INVENTORY_GRPC_URL, sync: false }
       - { key: INVENTORY_GRPC_TLS, value: "true" }
       - { key: INVENTORY_SYNC_ON_START, value: "false" }
+      # Brokers del agregador (contrato v2): RabbitMQ (exchange booking.events) y Kafka (topic-ordenes-b2b). Vacío = desactivado.
+      - { key: RABBITMQ_URL, sync: false }
+      - { key: KAFKA_BROKERS, sync: false }
 
   - type: web
     name: rodadoec-gateway

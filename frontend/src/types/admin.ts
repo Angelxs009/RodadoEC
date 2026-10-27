@@ -14,7 +14,7 @@ export interface AdminVehicle {
   supplier_id: number;
   depot_id: number;
   image_url?: string | null;
-  status: 'AVAILABLE' | 'RESERVED';
+  status: 'AVAILABLE' | 'RESERVED' | 'READY_FOR_DELIVERY' | 'DELIVERED' | 'CLEANING' | 'MAINTENANCE';
   min_driver_age?: number | null;
 }
 

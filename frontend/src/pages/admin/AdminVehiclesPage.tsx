@@ -11,6 +11,16 @@ import { ApiError, adminApi } from '../../lib/api';
 import { useAgencies } from '../../lib/depots';
 import type { AdminVehicle, CreateVehicleInput } from '../../types/admin';
 
+// Los 6 estados de la máquina de estados del contrato v2 (limpieza y mantenimiento sacan el auto de circulación).
+const STATUS_BADGE: Record<AdminVehicle['status'], { label: string; tone: 'success' | 'danger' | 'warning' | 'brand' | 'neutral' }> = {
+  AVAILABLE: { label: 'Disponible', tone: 'success' },
+  RESERVED: { label: 'Reservado', tone: 'danger' },
+  READY_FOR_DELIVERY: { label: 'Listo para entregar', tone: 'brand' },
+  DELIVERED: { label: 'Entregado', tone: 'neutral' },
+  CLEANING: { label: 'En limpieza', tone: 'warning' },
+  MAINTENANCE: { label: 'En mantenimiento', tone: 'warning' },
+};
+
 const CAR_TYPES = ['Compacto', 'Sedan', 'SUV'];
 const TRANSMISSIONS = ['Manual', 'Automatica'];
 
@@ -98,7 +108,7 @@ export function AdminVehiclesPage() {
     setTogglingId(v.id);
     setError(null);
     try {
-      if (v.status === 'RESERVED') await adminApi.releaseVehicle(v.id);
+      if (v.status !== 'AVAILABLE') await adminApi.releaseVehicle(v.id);
       else await adminApi.reserveVehicle(v.id);
       load();
     } catch (err) {
@@ -339,19 +349,19 @@ export function AdminVehiclesPage() {
                   </Td>
                   <Td className="tabular-nums">{v.min_driver_age ?? 18}</Td>
                   <Td>
-                    <Badge tone={v.status === 'RESERVED' ? 'danger' : 'success'}>
-                      {v.status === 'RESERVED' ? 'Reservado' : 'Disponible'}
+                    <Badge tone={STATUS_BADGE[v.status]?.tone ?? 'neutral'}>
+                      {STATUS_BADGE[v.status]?.label ?? v.status}
                     </Badge>
                   </Td>
                   <Td>
                     <div className="flex justify-end gap-2">
                       <Button
                         size="sm"
-                        variant={v.status === 'RESERVED' ? 'secondary' : 'ghost'}
+                        variant={v.status !== 'AVAILABLE' ? 'secondary' : 'ghost'}
                         loading={togglingId === v.id}
                         onClick={() => handleToggleStatus(v)}
                       >
-                        {v.status === 'RESERVED' ? 'Marcar disponible' : 'Marcar reservado'}
+                        {v.status !== 'AVAILABLE' ? 'Marcar disponible' : 'Marcar reservado'}
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => startEdit(v)}>
                         Editar

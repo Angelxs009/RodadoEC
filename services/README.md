@@ -66,10 +66,16 @@ implementa **completo**: las 19 operaciones bajo `/api/v2/autos/*`. La v1 sigue 
 | Acuerdo B2B de promociones (§9) | Reservas (`GetPromoContract` / `SetPromoContract`) |
 | Feed Outbox de CloudEvents (`/autos/eventos`) | Reservas (tabla `outbox_events`) |
 | Stock hacia Booking por gRPC (`inventory.InventoryStockService`, §2.1) | Reservas (`inventory.client.ts`; `INVENTORY_GRPC_URL`) |
+| Eventos a RabbitMQ (`booking.events`, routing key `auto.order.confirmed`…) y Kafka (`topic-ordenes-b2b`) como CloudEvents | Reservas (`broker.publisher.ts`: relay del outbox con reintentos; `RABBITMQ_URL`, `KAFKA_BROKERS`) |
 
 **Cómo se comprueba que se cumple:** `test/v2-contract.integration.ts` valida **cada respuesta real** contra el esquema del propio YAML
 (Ajv) y falla si una operación devuelve un código que el contrato no declara; además exige que se hayan ejercitado las 19 operaciones.
 Para probar el empuje de stock sin Booking: `node test/mock-inventory-server.js` e `INVENTORY_GRPC_URL=127.0.0.1:50999` en Reservas.
+
+**Brokers.** El relay publica cada evento del outbox en orden y solo lo marca como publicado cuando todos los brokers configurados lo
+aceptaron; si uno está caído, reintenta cada 10 s (verificado: con RabbitMQ detenido los eventos quedan pendientes y se reenvían al volver).
+Para probarlo en local: `docker compose --profile brokers up -d rabbitmq kafka`, arrancar Reservas con
+`RABBITMQ_URL=amqp://guest:guest@localhost:5672 KAFKA_BROKERS=localhost:9092` y escuchar con `node test/consume-brokers.js`.
 
 Decisiones donde el contrato es ambiguo o no alcanza:
 - La reserva v2 no lleva tarjeta (la paga el agregador): Reservas liquida por un canal **B2B simulado** en Pagos, de modo que toda orden queda respaldada por un pago.
@@ -121,6 +127,7 @@ GATEWAY_URL=http://localhost:3000 npm run test:integration
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | identity | Credenciales del administrador |
 | `ADMIN_JWT_SECRET`, `CUSTOMER_JWT_SECRET` | gateway **e** identity (iguales) | Firma/verificación de JWT |
 | `AUTH_ENFORCE_V2`, `BOOKING_API_KEY` | gateway | `true` exige JWT o `X-API-Key` en las rutas protegidas del contrato v2; `BOOKING_API_KEY` es la clave M2M |
+| `RABBITMQ_URL`, `KAFKA_BROKERS`, `RABBITMQ_EXCHANGE`, `KAFKA_TOPIC` | booking | Brokers del agregador (vacío = desactivado; exchange `booking.events` y topic `topic-ordenes-b2b` por defecto) |
 | `INVENTORY_GRPC_URL`, `INVENTORY_GRPC_TLS`, `INVENTORY_SYNC_ON_START` | booking | Servicio de stock de Booking Prototipo (vacío = desactivado) |
 | `GRPC_TIMEOUT_MS` | quien llama | Tolerancia por llamada gRPC (5000 por defecto; 60000 en Render por los arranques en frío) |
 | `NODE_ID`, `NODE_NAME`, `PUBLIC_ASSETS_URL` | gateway / booking | Identidad del nodo en `/autos/health` y origen de las fotos |

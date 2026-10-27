@@ -5,6 +5,7 @@ import { databaseModule, grpcClientOptions, healthModuleFor, TtlCache } from '@a
 import { BookingController } from './booking.controller';
 import { BookingService } from './booking.service';
 import { Order, OutboxEvent, PromoContract, WebhookDelivery, WebhookSubscription } from './entities/booking.entities';
+import { BrokerPublisher } from './broker.publisher';
 import { InventoryClient } from './inventory.client';
 import { WebhooksService } from './webhooks.service';
 
@@ -26,6 +27,6 @@ import { WebhooksService } from './webhooks.service';
     healthModuleFor('booking-service'),
   ],
   controllers: [BookingController],
-  providers: [BookingService, WebhooksService, InventoryClient, TtlCache],
+  providers: [BookingService, WebhooksService, InventoryClient, BrokerPublisher, TtlCache],
 })
 export class BookingModule {}

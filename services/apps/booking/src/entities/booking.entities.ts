@@ -119,6 +119,10 @@ export class OutboxEvent {
 
   @CreateDateColumn({ type: 'timestamptz' })
   time: Date;
+
+  // null = pendiente de publicar en los brokers (el relay lo reintenta hasta lograrlo)
+  @Column({ type: 'timestamptz', nullable: true })
+  published_at: Date | null;
 }
 
 /** Acuerdo B2B de promociones y combos (Cátedra RDA2 §9): una sola fila. */

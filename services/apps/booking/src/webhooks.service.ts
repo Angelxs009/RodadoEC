@@ -4,6 +4,7 @@ import { createHmac, randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { currentCorrelationId, notFound } from '@autos/common';
 import { MoreThan } from 'typeorm';
+import { BrokerPublisher } from './broker.publisher';
 import { OutboxEvent, WebhookDelivery, WebhookEvent, WebhookSubscription } from './entities/booking.entities';
 
 const RETRY_DELAYS_MS = [0, 1000, 3000]; // 3 intentos con espera creciente
@@ -66,6 +67,7 @@ export class WebhooksService {
     @InjectRepository(WebhookSubscription) private readonly subscriptions: Repository<WebhookSubscription>,
     @InjectRepository(WebhookDelivery) private readonly deliveries: Repository<WebhookDelivery>,
     @InjectRepository(OutboxEvent) private readonly outbox: Repository<OutboxEvent>,
+    private readonly brokers: BrokerPublisher,
   ) {}
 
   async list() {
@@ -137,6 +139,7 @@ export class WebhooksService {
         )
         .catch((err) => this.logger.warn(`No se pudo asentar ${eventType} en el outbox: ${(err as Error).message}`));
     }
+    if (cloud) void this.brokers.sweep(); // publica ya en RabbitMQ/Kafka (el relay periódico reintenta si falla)
     this.dispatch(eventType, resourceId, data, correlationId).catch((err) =>
       this.logger.warn(`No se pudo despachar ${eventType}: ${(err as Error).message}`),
     );
