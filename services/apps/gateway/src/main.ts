@@ -22,6 +22,19 @@ async function bootstrap() {
     exposedHeaders: [CORRELATION_HEADER, 'Idempotent-Replayed'],
   });
 
+  // Alias de rutas del contrato v2/v3 (todas apuntan a la misma implementación):
+  //   /api/v3/autos/*  →  /api/v2/autos/*        (ruta base canónica del contrato v3)
+  //   /autos/*         →  /api/v2/autos/*        (Booking monta {baseUrlRest}/autos/health sin prefijo)
+  //   /reservas[/…]    →  /api/v2/autos/reservas (la Guía §4 describe POST /reservas)
+  // El error ProblemDetails conserva la URL original en `instance` (p. ej. "/reservas").
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    const u = req.url;
+    if (u.startsWith('/api/v3/')) req.url = '/api/v2/' + u.slice('/api/v3/'.length);
+    else if (u === '/autos' || u.startsWith('/autos/') || u.startsWith('/autos?')) req.url = '/api/v2' + u;
+    else if (u === '/reservas' || u.startsWith('/reservas/') || u.startsWith('/reservas?')) req.url = '/api/v2/autos' + u;
+    next();
+  });
+
   // /api/v1 (contrato original) y /api/v2 (contrato del agregador) cuelgan de /api; /graphql, /health y /warmup quedan en la raíz.
   app.setGlobalPrefix('api', { exclude: ['graphql', 'health', 'health/deep', 'warmup'] });
 
@@ -33,7 +46,13 @@ async function bootstrap() {
     const started = Date.now();
     res.on('finish', () => {
       if (req.path === '/health') return;
-      logger.log(`${req.method} ${req.originalUrl.split('?')[0]} ${res.statusCode} ${Date.now() - started}ms`, 'http');
+      logger.event('info', `${req.method} ${req.originalUrl.split('?')[0]} ${res.statusCode} ${Date.now() - started}ms`, 'http', {
+        method: req.method,
+        path: req.originalUrl.split('?')[0],
+        status: res.statusCode,
+        duration_ms: Date.now() - started,
+        idempotency_key: req.headers['idempotency-key'],
+      });
     });
     runWithCorrelation(cid, () => next());
   });
@@ -44,7 +63,7 @@ async function bootstrap() {
   const config = new DocumentBuilder()
     .setTitle('GDS Autos Core API')
     .setDescription(
-      'API Gateway del dominio Autos del Booking Prototipo. Fachada REST (contrato v1 en /api/v1; contrato oficial v2 en /api/v2, documentado en /api/docs-v2) sobre los microservicios ' +
+      'API Gateway del dominio Autos del Booking Prototipo. Fachada REST (contrato v1 en /api/v1; contrato oficial v3 en /api/v3, documentado en /api/docs-v3) sobre los microservicios ' +
         'Catálogo, Reservas, Pagos e Identidad (gRPC). También publica GraphQL federado en /graphql. ' +
         (enforceAdmin() ? 'Las rutas /admin exigen un JWT de ADMIN (POST /admin/auth/login).' : ''),
     )
@@ -72,11 +91,12 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document, { swaggerOptions: { persistAuthorization: true } });
 
   // Contrato v2 del agregador: se publica el archivo tal cual (única fuente de verdad), sin regenerarlo desde el código.
-  const v2File = join(protoDir(), '..', 'autos-openapi-v2.yaml');
-  if (existsSync(v2File)) {
-    SwaggerModule.setup('api/docs-v2', app, loadYaml(readFileSync(v2File, 'utf8')) as any, {
-      customSiteTitle: 'Autos API v2 · contrato oficial',
-      yamlDocumentUrl: 'api/docs-v2/openapi.yaml',
+  for (const [version, route] of [['v3', 'api/docs-v3'], ['v2', 'api/docs-v2']] as const) {
+    const file = join(protoDir(), '..', `autos-openapi-${version}.yaml`);
+    if (!existsSync(file)) continue;
+    SwaggerModule.setup(route, app, loadYaml(readFileSync(file, 'utf8')) as any, {
+      customSiteTitle: `Autos API ${version} · contrato oficial`,
+      yamlDocumentUrl: `${route}/openapi.yaml`,
       swaggerOptions: { persistAuthorization: true },
     });
   }

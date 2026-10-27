@@ -3,7 +3,7 @@ import { api, http } from './helpers';
 import { CONTRACT_OPERATIONS, exercisedOperations, schemaErrors, v2 } from './contract';
 
 /**
- * Conformidad con el contrato oficial autos-openapi-v2.yaml. Cada respuesta se valida contra el esquema del
+ * Conformidad con el contrato oficial autos-openapi-v3.yaml. Cada respuesta se valida contra el esquema del
  * contrato (ver contract.ts) y al final se comprueba que se ejercitó TODA operación que el contrato define.
  * Requiere el sistema levantado (docker compose up) y la bandera AUTH_ENFORCE_V2 apagada.
  */
@@ -12,13 +12,13 @@ const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISO
 const PICKUP = day(30);
 const DROPOFF = day(33);
 
-const conductor = (extra: Record<string, unknown> = {}) => ({
-  nombre: 'Carlos Andrés Zambrano',
+const driver = (extra: Record<string, unknown> = {}) => ({
+  full_name: 'Carlos Andrés Zambrano',
   email: 'carlos.zambrano@example.com',
-  telefono: '+593987654321',
-  licencia_conducir: '1723456789',
-  pais_licencia: 'Ecuador',
-  edad: 32,
+  phone: '+593987654321',
+  license_number: '1723456789',
+  country_license: 'Ecuador',
+  age: 32,
   ...extra,
 });
 
@@ -29,8 +29,8 @@ const reserva = (vehicleId: string, extra: Record<string, unknown> = {}) => ({
   pickup_time: '10:00',
   dropoff_time: '10:00',
   pickup_location: 'Aeropuerto Mariscal Sucre (UIO), Quito',
-  tipo_cobertura: 'TOTAL',
-  conductor: conductor(),
+  coverage_type: 'TOTAL',
+  driver: driver(),
   ...extra,
 });
 
@@ -62,7 +62,7 @@ describe('Telemetría y salud', () => {
     const r = await v2('GET', '/autos/health');
     expect(r.status).toBe(200);
     expect(r.body.status).toBe('HEALTHY');
-    expect(r.body.version).toBe('2.0.0');
+    expect(r.body.version).toBe('3.0.0');
     expect(r.body.vertical).toBe('AUTOS');
     expect(r.body.total_vehiculos).toBeGreaterThanOrEqual(25);
   });
@@ -112,8 +112,10 @@ describe('Catálogo y búsqueda', () => {
     expect(franja.status).toBe(400);
     expect(franja.body.invalid_params.map((p: any) => p.name)).toContain('pickup_time');
 
+    // Errores semánticos de fechas: 422 INVALID_DATES (no activan compensaciones de Saga).
     const pasada = await v2('POST', '/autos/search', {}, { body: { ...body, pickup_date: '2020-01-01' } });
-    expect(pasada.status).toBe(400);
+    expect(pasada.status).toBe(422);
+    expect(pasada.body.code).toBe('INVALID_DATES');
     expect(pasada.body.invalid_params.map((p: any) => p.name)).toContain('pickup_date');
   });
 
@@ -165,6 +167,7 @@ describe('Reservas: ciclo completo con máquina de estados', () => {
     expect(lista.body.data.map((c: any) => c.vehicle_id)).not.toContain(car);
     const otra = await v2('POST', '/autos/orders/create', {}, { body: reserva(car), headers: idem() });
     expect(otra.status).toBe(409);
+    expect(otra.body.code).toBe('VEHICLE_UNAVAILABLE');
   });
 
   it('POST /autos/orders/create valida el cuerpo, la edad y exige Idempotency-Key', async () => {
@@ -174,9 +177,9 @@ describe('Reservas: ciclo completo con máquina de estados', () => {
 
     const invalida = await v2('POST', '/autos/orders/create', {}, { body: { vehicle_id: freeCars[0] }, headers: idem() });
     expect(invalida.status).toBe(400);
-    expect(invalida.body.invalid_params.map((p: any) => p.name)).toEqual(expect.arrayContaining(['pickup_date', 'conductor']));
+    expect(invalida.body.invalid_params.map((p: any) => p.name)).toEqual(expect.arrayContaining(['pickup_date', 'driver']));
 
-    const menor = await v2('POST', '/autos/orders/create', {}, { body: reserva(freeCars[0], { conductor: conductor({ edad: 17 }) }), headers: idem() });
+    const menor = await v2('POST', '/autos/orders/create', {}, { body: reserva(freeCars[0], { driver: driver({ age: 17 }) }), headers: idem() });
     expect(menor.status).toBe(422);
   });
 
@@ -242,8 +245,10 @@ describe('Reservas: ciclo completo con máquina de estados', () => {
 
     const r = await v2('POST', '/autos/orders/create', {}, { body: reserva(car), headers: idem() });
     expect(r.status).toBe(409);
-    expect(r.body.code).toBe('VEHICLE_IN_CLEANING_COOLDOWN');
-    expect(r.body.title).toMatch(/Cooldown/);
+    expect(r.body.code).toBe('VEHICLE_UNAVAILABLE'); // único código que activa la compensación LIFO en Booking
+    expect(r.body.reason).toBe('VEHICLE_IN_CLEANING_COOLDOWN');
+    expect(r.body.detail).toMatch(/limpieza/);
+    expect((await v2('GET', '/autos/{id}', { id: car })).body.cleaning_cooldown.activo).toBe(true);
 
     const orden = (await v2('GET', '/autos/orders/{orderId}', { orderId: pnr })).body;
     expect(orden.status).toBe('COMPLETADA');
@@ -254,7 +259,7 @@ describe('Reservas: ciclo completo con máquina de estados', () => {
 describe('Cancelación con compensación (Saga)', () => {
   it('POST /autos/reservas + cancel: reembolso 100% y el auto vuelve a DISPONIBLE', async () => {
     const car = nextCar();
-    const created = await v2('POST', '/autos/reservas', {}, { body: reserva(car, { tipo_cobertura: 'BASICA' }), headers: idem() });
+    const created = await v2('POST', '/autos/reservas', {}, { body: reserva(car, { coverage_type: 'BASICA' }), headers: idem() });
     expect(created.status).toBe(201);
     expect(created.body.deposito_garantia).toBe(1000);
 
@@ -272,6 +277,45 @@ describe('Cancelación con compensación (Saga)', () => {
 
     const mal = await v2('POST', '/autos/orders/{orderId}/cancel', { orderId: created.body.pnr }, { body: { solicitante: 'EL_VECINO' }, headers: idem() });
     expect(mal.status).toBe(400);
+  });
+
+  it('contrato v3: acepta driver en inglés, conductor con alias en español y coverage_type BASIC', async () => {
+    const car = nextCar();
+    const ingles = await v2('POST', '/autos/orders/create', {}, { body: reserva(car, { coverage_type: 'BASIC' }), headers: idem() });
+    expect(ingles.status).toBe(201);
+    expect(ingles.body.tipo_cobertura).toBe('BASICA');
+    expect(ingles.body.vehicle_id).toBe(car);
+    expect(ingles.body.voucher_qr_payload).toContain(ingles.body.pnr);
+
+    const car2 = nextCar();
+    const { driver: _d, coverage_type: _c, ...sinDriver } = reserva(car2) as any;
+    const espanol = await v2('POST', '/autos/reservas', {}, {
+      body: { ...sinDriver, conductor: { nombre: 'Ana Pérez', correo: 'ana@example.com', telefono: '0999999999', licencia_conducir: 'A123', edad: 40 } },
+      headers: idem(),
+    });
+    expect(espanol.status).toBe(201);
+  });
+
+  it('driver sin age → 400; menor de 18 → 422', async () => {
+    const car = freeCars[0];
+    const sinEdad = await v2('POST', '/autos/orders/create', {}, { body: reserva(car, { driver: driver({ age: undefined }) }), headers: idem() });
+    expect(sinEdad.status).toBe(400);
+    expect(sinEdad.body.invalid_params.map((p: any) => p.name)).toContain('driver.age');
+  });
+
+  it('fechas inválidas en la reserva → 422 INVALID_DATES (no 400)', async () => {
+    const r = await v2('POST', '/autos/orders/create', {}, { body: reserva(freeCars[0], { pickup_date: DROPOFF, dropoff_date: PICKUP }), headers: idem() });
+    expect(r.status).toBe(422);
+    expect(r.body.code).toBe('INVALID_DATES');
+  });
+
+  it('Idempotency-Key reutilizada con otro cuerpo → 400 IDEMPOTENCY_CONFLICT', async () => {
+    const car = nextCar();
+    const key = idem();
+    expect((await v2('POST', '/autos/orders/create', {}, { body: reserva(car), headers: key })).status).toBe(201);
+    const otro = await v2('POST', '/autos/orders/create', {}, { body: reserva(car, { driver: driver({ full_name: 'Otra Persona' }) }), headers: key });
+    expect(otro.status).toBe(400);
+    expect(otro.body.code).toBe('IDEMPOTENCY_CONFLICT');
   });
 
   it('POST /autos/{id}/devolucion: devolución directa con cooldown de 2 h', async () => {
@@ -325,6 +369,21 @@ describe('Mantenimiento preventivo (RBAC)', () => {
   });
 });
 
+describe('Rutas que Booking puede usar como baseUrlRest', () => {
+  it('/api/v3, /api/v2 y la raíz (/autos, /reservas) llegan a la misma implementación', async () => {
+    for (const base of ['/api/v3', '/api/v2', '']) {
+      const h = await http('GET', `${base}/autos/health`);
+      expect(h.status).toBe(200);
+      expect(h.body.status).toBe('HEALTHY');
+    }
+    // POST /reservas en la raíz (Guía §4): 400 por cuerpo vacío demuestra que la ruta existe y valida.
+    const r = await http('POST', '/reservas', {}, idem());
+    expect(r.status).toBe(400);
+    expect(r.body.instance).toBe('/reservas');
+    expect(r.body.invalid_params.length).toBeGreaterThan(0);
+  });
+});
+
 describe('Acuerdo B2B de promociones (Cátedra RDA2 §9)', () => {
   it('GET y PUT /autos/promociones/contrato', async () => {
     const antes = await v2('GET', '/autos/promociones/contrato');
@@ -372,7 +431,7 @@ describe('Feed Outbox de eventos CloudEvents', () => {
 });
 
 describe('Cobertura total del contrato', () => {
-  it('las pruebas ejercitaron TODAS las operaciones que define autos-openapi-v2.yaml', () => {
+  it('las pruebas ejercitaron TODAS las operaciones que define autos-openapi-v3.yaml', () => {
     const faltan = CONTRACT_OPERATIONS.filter((op) => !exercisedOperations().has(op));
     expect(faltan).toEqual([]);
     expect(CONTRACT_OPERATIONS.length).toBe(19);

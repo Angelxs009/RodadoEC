@@ -23,9 +23,8 @@ import {
   priceChanged,
   rentalDays,
   TtlCache,
-  vehicleInCleaningCooldown,
-  vehicleInMaintenance,
   vehicleReserved,
+  vehicleUnavailable,
 } from '@autos/common';
 import { Order, OrderStatus, PromoContract, WebhookEvent } from './entities/booking.entities';
 import { dateSlotOfIso, InventoryClient, localDateSlot } from './inventory.client';
@@ -119,6 +118,13 @@ export class BookingService implements OnModuleInit {
   }
 
   async onModuleInit() {
+    // Tras un reinicio, los autos que siguen en cooldown deben volver a reportar stock = 1 cuando termine.
+    if (this.inventory.enabled) {
+      this.catalog
+        .call<{ vehicles: any[] }>('GetVehicles', {})
+        .then(({ vehicles }) => vehicles.filter((v) => v.status === 'CLEANING' && v.available_from).forEach((v) => this.scheduleCooldownEnd(v.vehicle_id, v.available_from)))
+        .catch((e) => this.logger.warn(`No se reprogramaron los fines de cooldown: ${e.message}`));
+    }
     if (/^(1|true)$/i.test(process.env.INVENTORY_SYNC_ON_START ?? '')) {
       this.syncInventory().catch((e) => this.logger.warn(`Sincronización inicial de stock omitida: ${e.message}`));
     }
@@ -297,6 +303,7 @@ export class BookingService implements OnModuleInit {
     coverage?: string;
     deposit?: number;
     pricing?: { days: number; base: number; coverage: number; surcharge: number };
+    v2?: boolean;
   }): Promise<Order> {
     // Paso 1: reservar el auto (atómico). Si ya no está libre → compensar reembolsando el pago.
     const { reserved } = await this.catalog.call<{ reserved: boolean }>('ReserveVehicle', { vehicle_id: p.vehicle.vehicle_id });
@@ -304,7 +311,9 @@ export class BookingService implements OnModuleInit {
       await this.payments.call('Refund', { payment_reference: p.paymentReference }).catch((e) =>
         this.logger.error(`Compensación fallida (reembolso) de ${p.paymentReference}: ${e.message}`),
       );
-      throw vehicleReserved(p.vehicle.vehicle_id);
+      throw p.v2
+        ? vehicleUnavailable(p.vehicle.vehicle_id, 'VEHICLE_ALREADY_RESERVED', `El vehículo ${p.vehicle.vehicle_id} acaba de ser reservado por otra orden.`)
+        : vehicleReserved(p.vehicle.vehicle_id);
     }
 
     // Paso 2: consumir el pago (atómico). Si otro pedido lo usó antes → compensar liberando el auto.
@@ -414,6 +423,7 @@ export class BookingService implements OnModuleInit {
       coverage,
       deposit: pricing.deposit,
       pricing: { days: pricing.days, base: pricing.base, coverage: pricing.coverage, surcharge: pricing.surcharge },
+      v2: true,
     });
     return toOrderMsg(saved);
   }
@@ -617,9 +627,8 @@ export class BookingService implements OnModuleInit {
 
     // Stock hacia Booking: sin disponibilidad ahora, y de nuevo disponible al terminar el cooldown.
     const now = localDateSlot(new Date());
-    const later = localDateSlot(availableFrom);
     void this.inventory.pushStock(vehicleId, now.date, now.slot, false);
-    setTimeout(() => void this.inventory.pushStock(vehicleId, later.date, later.slot, true), CLEANING_COOLDOWN_MINUTES * 60_000).unref();
+    this.scheduleCooldownEnd(vehicleId, availableFrom.toISOString());
 
     return {
       vehicle: v,
@@ -629,6 +638,14 @@ export class BookingService implements OnModuleInit {
         ? `ALERTA PREVENTIVA: El vehículo ha superado el límite de ${v.next_maintenance_km} km. Mantenimiento requerido.`
         : '',
     };
+  }
+
+  /** Al terminar el cooldown el auto vuelve a estar disponible: se avisa a Booking con available_units = 1. */
+  private scheduleCooldownEnd(vehicleId: string, availableFromIso: string) {
+    if (!this.inventory.enabled) return;
+    const at = new Date(availableFromIso);
+    const later = localDateSlot(at);
+    setTimeout(() => void this.inventory.pushStock(vehicleId, later.date, later.slot, true), Math.max(0, at.getTime() - Date.now())).unref();
   }
 
   // ═══ Contrato v2 · mantenimiento ══════════════════════════════════════════
@@ -645,6 +662,11 @@ export class BookingService implements OnModuleInit {
   }
 
   private emitMaintenanceAlert(v: any) {
+    // Registro de auditoría de la alerta preventiva (Guía §5.3): queda en el archivo de logs del servicio.
+    this.logger.warn(
+      `AUDITORIA alerta de mantenimiento: vehículo ${v.vehicle_id} con ${v.odometer_km} km (umbral ${v.next_maintenance_km} km)`,
+      'AUDIT',
+    );
     return this.webhooks.emit(WebhookEvent.CAR_MAINTENANCE_ALERT, v.vehicle_id, {
       vehicle_id: v.vehicle_id,
       odometer_km: v.odometer_km,
@@ -723,12 +745,24 @@ export class BookingService implements OnModuleInit {
     if (age < vehicle.min_driver_age) throw driverAgeRestriction(vehicle.vehicle_id, vehicle.min_driver_age, age);
   }
 
-  /** Estado del auto para el contrato v2: distingue cooldown de limpieza, mantenimiento y reservado. */
+  /**
+   * Un auto que no se puede reservar responde 409 VEHICLE_UNAVAILABLE (el código que activa la compensación de
+   * Saga en Booking); `reason` distingue cooldown de limpieza, mantenimiento y reservado/en uso.
+   */
   private assertBookableV2(vehicle: any) {
     if (vehicle.status === 'AVAILABLE') return;
-    if (vehicle.status === 'CLEANING') throw vehicleInCleaningCooldown(vehicle.vehicle_id, vehicle.available_from);
-    if (vehicle.status === 'MAINTENANCE') throw vehicleInMaintenance(vehicle.vehicle_id);
-    throw vehicleReserved(vehicle.vehicle_id);
+    const id = vehicle.vehicle_id;
+    if (vehicle.status === 'CLEANING') {
+      throw vehicleUnavailable(
+        id,
+        'VEHICLE_IN_CLEANING_COOLDOWN',
+        `El vehículo ${id} se encuentra en ciclo de limpieza e higienización obligatoria (2 horas). Estará disponible nuevamente a las ${vehicle.available_from}.`,
+      );
+    }
+    if (vehicle.status === 'MAINTENANCE') {
+      throw vehicleUnavailable(id, 'VEHICLE_IN_MAINTENANCE', `El vehículo ${id} está en mantenimiento preventivo.`);
+    }
+    throw vehicleUnavailable(id, 'VEHICLE_ALREADY_RESERVED', `El vehículo ${id} ya está reservado o en uso.`);
   }
 
   /** Consulta el estado actual del auto en Catálogo (la caché de búsqueda puede estar desactualizada). */

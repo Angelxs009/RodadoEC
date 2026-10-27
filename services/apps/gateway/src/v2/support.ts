@@ -1,5 +1,5 @@
 import {
-  computePricing, COVERAGE_RULES, Coverage, InvalidParam, invalidParams, needsAgeSurcharge, normalizeCoverage, rentalDays,
+  computePricing, COVERAGE_RULES, Coverage, InvalidParam, invalidDates, invalidParams, needsAgeSurcharge, normalizeCoverage, rentalDays,
 } from '@autos/common';
 
 /**
@@ -46,7 +46,13 @@ export const isSlot = (s: unknown): s is string => typeof s === 'string' && SLOT
 /** Fecha de hoy en Ecuador (YYYY-MM-DD). */
 export const todayEcuador = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil' }).format(new Date());
 
-export function checkTrip(b: { pickupDate: any; pickupTime?: any; dropoffDate: any; dropoffTime?: any }, bad: InvalidParam[], requireTimes: boolean) {
+/**
+ * Valida las fechas de una búsqueda o reserva. Los errores de formato van a `bad` (→ 400 MALFORMED_REQUEST);
+ * los semánticos (pasado, devolución anterior a la recogida) se devuelven aparte (→ 422 INVALID_DATES, que no
+ * dispara compensaciones de Saga en Booking).
+ */
+export function checkTrip(b: { pickupDate: any; pickupTime?: any; dropoffDate: any; dropoffTime?: any }, bad: InvalidParam[], requireTimes: boolean): InvalidParam[] {
+  const semantic: InvalidParam[] = [];
   const pd = { name: 'pickup_date', ok: isDate(b.pickupDate) };
   const dd = { name: 'dropoff_date', ok: isDate(b.dropoffDate) };
   if (!pd.ok) bad.push({ name: pd.name, reason: 'Debe ser una fecha válida en formato YYYY-MM-DD.' });
@@ -57,13 +63,18 @@ export function checkTrip(b: { pickupDate: any; pickupTime?: any; dropoffDate: a
   }
   // ALLOW_PAST_DATES=true (pruebas de integración con los ejemplos del contrato, cuyas fechas ya pasaron) omite esta regla.
   const allowPast = /^(1|true)$/i.test(process.env.ALLOW_PAST_DATES ?? '');
-  if (pd.ok && !allowPast && b.pickupDate < todayEcuador()) bad.push({ name: 'pickup_date', reason: 'La fecha de recogida no puede ser en el pasado.' });
+  if (pd.ok && !allowPast && b.pickupDate < todayEcuador()) semantic.push({ name: 'pickup_date', reason: 'La fecha de recogida no puede ser en el pasado.' });
   if (pd.ok && dd.ok) {
-    if (b.dropoffDate < b.pickupDate) bad.push({ name: 'dropoff_date', reason: 'La fecha de devolución no puede ser anterior a la de recogida.' });
+    if (b.dropoffDate < b.pickupDate) semantic.push({ name: 'dropoff_date', reason: 'La fecha de devolución no puede ser anterior a la de recogida.' });
     else if (b.dropoffDate === b.pickupDate && isSlot(b.pickupTime) && isSlot(b.dropoffTime) && b.dropoffTime <= b.pickupTime) {
-      bad.push({ name: 'dropoff_time', reason: 'La hora de devolución debe ser posterior a la de recogida el mismo día.' });
+      semantic.push({ name: 'dropoff_time', reason: 'La hora de devolución debe ser posterior a la de recogida el mismo día.' });
     }
   }
+  return semantic;
+}
+
+export function throwIfBadDates(semantic: InvalidParam[]) {
+  if (semantic.length) throw invalidDates(semantic);
 }
 
 export function throwIfInvalid(bad: InvalidParam[]) {
@@ -158,6 +169,21 @@ export function vehicleCard(v: any, cat: CatalogData, opts: { days?: number; dri
     unlimited_mileage: true,
     fuel_policy: 'Lleno a Lleno (Full-to-Full)',
     free_cancellation: true,
+    // contrato v3
+    total_price: total,
+    status: ESTADO[v.status] ?? 'DISPONIBLE',
+    ...(v.status === 'CLEANING' && v.available_from
+      ? {
+          cleaning_cooldown: {
+            cooldown_horas: 2,
+            cooldown_minutos: 120,
+            activo: new Date(v.available_from).getTime() > Date.now(),
+            inicio_cooldown: new Date(new Date(v.available_from).getTime() - 120 * 60_000).toISOString(),
+            fin_cooldown: new Date(v.available_from).toISOString(),
+            proximo_estado: 'DISPONIBLE',
+          },
+        }
+      : {}),
   };
 }
 
@@ -229,6 +255,8 @@ export function orderToV2(o: any, base: string) {
       desglose: { dias: pricing.days, tarifa_base: pricing.base, cobertura: pricing.coverage, recargo_edad: pricing.surcharge },
     },
     voucher_qr_data: `BOOKING-CAR-${o.locator}-${autoId}-${status}`,
+    vehicle_id: autoId,
+    voucher_qr_payload: `${base}/autos/orders/${o.locator}`,
     checklist_mostrador: [
       'Licencia de conducir vigente (original)',
       'Documento de identidad',

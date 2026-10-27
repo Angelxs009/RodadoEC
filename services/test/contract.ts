@@ -6,10 +6,10 @@ import { join } from 'path';
 import { http, Res } from './helpers';
 
 /**
- * Verificador de conformidad con el contrato oficial autos-openapi-v2.yaml: cada respuesta real del gateway
+ * Verificador de conformidad con el contrato oficial autos-openapi-v3.yaml: cada respuesta real del gateway
  * se valida contra el esquema que el contrato declara para ese endpoint y código de estado.
  */
-const spec: any = load(readFileSync(join(__dirname, '..', '..', 'contracts', 'autos-openapi-v2.yaml'), 'utf8'));
+const spec: any = load(readFileSync(join(__dirname, '..', '..', 'contracts', 'autos-openapi-v3.yaml'), 'utf8'));
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 addFormats(ajv);
@@ -46,7 +46,7 @@ export async function v2(
 ): Promise<Res> {
   const path = template.replace(/\{(\w+)\}/g, (_, k) => encodeURIComponent(params[k]));
   const qs = opts.query ? `?${new URLSearchParams(Object.entries(opts.query).map(([k, v]) => [k, String(v)]))}` : '';
-  const res = await http(method, `/api/v2${path}${qs}`, opts.body, opts.headers);
+  const res = await http(method, `/api/v3${path}${qs}`, opts.body, opts.headers);
   exercised.add(`${method.toUpperCase()} ${template}`);
 
   const op = spec.paths[template]?.[method.toLowerCase()];

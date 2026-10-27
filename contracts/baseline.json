@@ -1014,15 +1014,19 @@
     "surface": {
       ".inventory.InventoryStockService/PushStockUpdate": "StockUpdateMessage->StockUpdateAck",
       ".inventory.InventoryStockService/StreamInventoryChanges": "StockChangeEvent->StreamSummary",
+      ".inventory.InventoryStockService/GetSlotAvailability": "SlotAvailabilityRequest->SlotAvailabilityResponse",
       ".inventory.StockUpdateMessage.service_id": "undefined:string",
       ".inventory.StockUpdateMessage.item_id": "undefined:string",
       ".inventory.StockUpdateMessage.date": "undefined:string",
       ".inventory.StockUpdateMessage.time_slot": "undefined:string",
       ".inventory.StockUpdateMessage.available_units": "undefined:int32",
       ".inventory.StockUpdateMessage.timestamp": "undefined:int64",
+      ".inventory.StockUpdateMessage.slot_id": "undefined:string",
       ".inventory.StockUpdateAck.success": "undefined:bool",
       ".inventory.StockUpdateAck.message": "undefined:string",
       ".inventory.StockUpdateAck.processed_at": "undefined:int64",
+      ".inventory.StockUpdateAck.error_code": "undefined:string",
+      ".inventory.StockUpdateAck.current_available": "undefined:int32",
       ".inventory.StockChangeEvent.event_id": "undefined:string",
       ".inventory.StockChangeEvent.service_id": "undefined:string",
       ".inventory.StockChangeEvent.item_id": "undefined:string",
@@ -1030,9 +1034,22 @@
       ".inventory.StockChangeEvent.time_slot": "undefined:string",
       ".inventory.StockChangeEvent.delta": "undefined:int32",
       ".inventory.StockChangeEvent.timestamp": "undefined:int64",
+      ".inventory.StockChangeEvent.slot_id": "undefined:string",
       ".inventory.StreamSummary.total_events_processed": "undefined:int32",
       ".inventory.StreamSummary.is_synchronized": "undefined:bool",
-      ".inventory.StreamSummary.last_sync_hash": "undefined:string"
+      ".inventory.StreamSummary.last_sync_hash": "undefined:string",
+      ".inventory.SlotAvailabilityRequest.service_id": "undefined:string",
+      ".inventory.SlotAvailabilityRequest.item_id": "undefined:string",
+      ".inventory.SlotAvailabilityRequest.date": "undefined:string",
+      ".inventory.SlotAvailabilityRequest.time_slot": "undefined:string",
+      ".inventory.SlotAvailabilityRequest.slot_id": "undefined:string",
+      ".inventory.SlotAvailabilityResponse.item_id": "undefined:string",
+      ".inventory.SlotAvailabilityResponse.slot_id": "undefined:string",
+      ".inventory.SlotAvailabilityResponse.date": "undefined:string",
+      ".inventory.SlotAvailabilityResponse.time_slot": "undefined:string",
+      ".inventory.SlotAvailabilityResponse.available_units": "undefined:int32",
+      ".inventory.SlotAvailabilityResponse.status": "undefined:string",
+      ".inventory.SlotAvailabilityResponse.last_updated_epoch": "undefined:int64"
     }
   }
 }

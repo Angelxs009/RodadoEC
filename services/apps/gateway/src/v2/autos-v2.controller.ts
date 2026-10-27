@@ -11,11 +11,11 @@ import { V2AccessGuard, V2Roles } from '../common/auth';
 import { IdempotencyInterceptor, IdempotencyKeyGuard } from '../common/idempotency';
 import {
   CATEGORIES, CatalogData, checkTrip, coverageOptions, cooldownResponse, fleetItem, isDate, isEmail, isInt, isText, locationMatches,
-  orderToV2, promoToV2, resolveLocation, throwIfInvalid, TRANSMISSIONS, transmissionOf, categoryOf, vehicleCard, ESTADO,
+  orderToV2, promoToV2, resolveLocation, throwIfBadDates, throwIfInvalid, TRANSMISSIONS, transmissionOf, categoryOf, vehicleCard, ESTADO,
 } from './support';
 
-const VERSION = '2.0.0';
-const COVERAGE_INPUT = ['BASICA', 'TOTAL', 'PREMIUM'];
+const VERSION = '3.0.0';
+const COVERAGE_INPUT = ['BASIC', 'BASICA', 'TOTAL', 'PREMIUM'];
 
 /**
  * Contrato REST v2 del agregador Booking Prototipo (contracts/autos-openapi-v2.yaml, ruta /api/v2).
@@ -193,13 +193,14 @@ export class AutosV2Controller {
   async search(@Body() b: any, @Res({ passthrough: true }) res: any) {
     const bad: InvalidParam[] = [];
     if (!isText(b?.pickup_location)) bad.push({ name: 'pickup_location', reason: 'Es obligatorio (ciudad o código IATA).' });
-    checkTrip({ pickupDate: b?.pickup_date, pickupTime: b?.pickup_time, dropoffDate: b?.dropoff_date, dropoffTime: b?.dropoff_time }, bad, true);
+    const dateIssues = checkTrip({ pickupDate: b?.pickup_date, pickupTime: b?.pickup_time, dropoffDate: b?.dropoff_date, dropoffTime: b?.dropoff_time }, bad, true);
     if (b?.driver_age !== undefined && !isInt(b.driver_age, 0, 120)) bad.push({ name: 'driver_age', reason: 'Debe ser un entero entre 0 y 120.' });
     const category = b?.category ?? 'ALL';
     const transmission = b?.transmission ?? 'ALL';
     if (category !== 'ALL' && !(CATEGORIES as readonly string[]).includes(category)) bad.push({ name: 'category', reason: `Valores admitidos: ALL, ${CATEGORIES.join(', ')}.` });
     if (transmission !== 'ALL' && !(TRANSMISSIONS as readonly string[]).includes(transmission)) bad.push({ name: 'transmission', reason: 'Valores admitidos: ALL, MANUAL, AUTOMATICO.' });
     throwIfInvalid(bad);
+    throwIfBadDates(dateIssues);
 
     const age: number = b.driver_age ?? 30;
     if (age < MIN_LEGAL_AGE) throw driverUnderage(age);
@@ -268,7 +269,9 @@ export class AutosV2Controller {
   }
 
   private async create(req: any, b: any, res: any) {
-    const c = b?.conductor ?? {};
+    // Contrato v3: `driver` en inglés es el canónico; `conductor` y los nombres en español se aceptan como alias.
+    const raw = b?.driver ?? b?.conductor;
+    const c = raw && typeof raw === 'object' ? raw : {};
     const norm = {
       vehicle_id: b?.vehicle_id ?? b?.auto_id,
       pickup_date: b?.pickup_date ?? b?.fecha_recogida,
@@ -277,28 +280,30 @@ export class AutosV2Controller {
       dropoff_time: b?.dropoff_time ?? b?.hora_devolucion,
       pickup_location: b?.pickup_location ?? b?.lugar_recogida,
       dropoff_location: b?.dropoff_location ?? b?.lugar_devolucion,
-      coverage: b?.tipo_cobertura ?? b?.cobertura,
-      name: c.nombre ?? c.nombre_completo ?? c.full_name,
+      coverage: b?.coverage_type ?? b?.tipo_cobertura ?? b?.cobertura,
+      name: c.full_name ?? c.nombre ?? c.nombre_completo,
       email: c.email ?? c.correo,
-      phone: c.telefono ?? c.phone,
-      license: c.licencia_conducir,
-      license_country: c.pais_licencia,
-      age: c.edad ?? c.edad_conductor ?? c.driver_age,
-      flight: c.numero_vuelo,
+      phone: c.phone ?? c.telefono,
+      license: c.license_number ?? c.licencia_conducir,
+      license_country: c.country_license ?? c.pais_licencia,
+      age: c.age ?? c.edad ?? c.edad_conductor ?? c.driver_age,
+      flight: c.flight_number ?? c.numero_vuelo,
     };
     const bad: InvalidParam[] = [];
     if (!isText(norm.vehicle_id)) bad.push({ name: 'vehicle_id', reason: 'Es obligatorio.' });
-    checkTrip({ pickupDate: norm.pickup_date, pickupTime: norm.pickup_time, dropoffDate: norm.dropoff_date, dropoffTime: norm.dropoff_time }, bad, false);
-    if (b?.conductor === undefined || typeof b.conductor !== 'object') bad.push({ name: 'conductor', reason: 'Es obligatorio.' });
+    const dateIssues = checkTrip({ pickupDate: norm.pickup_date, pickupTime: norm.pickup_time, dropoffDate: norm.dropoff_date, dropoffTime: norm.dropoff_time }, bad, false);
+    if (!raw || typeof raw !== 'object') bad.push({ name: 'driver', reason: 'Es obligatorio.' });
     else {
-      if (!isText(norm.name)) bad.push({ name: 'conductor.nombre', reason: 'Es obligatorio.' });
-      if (!isEmail(norm.email)) bad.push({ name: 'conductor.email', reason: 'Es obligatorio y debe ser un correo válido.' });
-      if (!isText(norm.phone)) bad.push({ name: 'conductor.telefono', reason: 'Es obligatorio.' });
-      if (!isText(norm.license)) bad.push({ name: 'conductor.licencia_conducir', reason: 'Es obligatorio.' });
-      if (norm.age !== undefined && !isInt(norm.age, 0, 120)) bad.push({ name: 'conductor.edad', reason: 'Debe ser un entero entre 0 y 120.' });
+      if (!isText(norm.name)) bad.push({ name: 'driver.full_name', reason: 'Es obligatorio.' });
+      if (!isEmail(norm.email)) bad.push({ name: 'driver.email', reason: 'Es obligatorio y debe ser un correo válido.' });
+      if (!isText(norm.phone)) bad.push({ name: 'driver.phone', reason: 'Es obligatorio.' });
+      if (!isText(norm.license)) bad.push({ name: 'driver.license_number', reason: 'Es obligatorio.' });
+      // age es obligatoria en el contrato v3; ser menor de 18 es un error semántico (422), no de formato.
+      if (!isInt(norm.age, 0, 120)) bad.push({ name: 'driver.age', reason: 'Es obligatoria y debe ser un entero entre 0 y 120.' });
     }
-    if (norm.coverage !== undefined && !COVERAGE_INPUT.includes(norm.coverage)) bad.push({ name: 'tipo_cobertura', reason: 'Valores admitidos: BASICA, TOTAL, PREMIUM.' });
+    if (norm.coverage !== undefined && !COVERAGE_INPUT.includes(norm.coverage)) bad.push({ name: 'coverage_type', reason: 'Valores admitidos: BASIC, BASICA, TOTAL.' });
     throwIfInvalid(bad);
+    throwIfBadDates(dateIssues);
 
     // Las ubicaciones son opcionales y de texto libre: si se reconocen se guardan resueltas.
     const depots = norm.pickup_location || norm.dropoff_location ? (await this.catalogData(res)).depots : [];

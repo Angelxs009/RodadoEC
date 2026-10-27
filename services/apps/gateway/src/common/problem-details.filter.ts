@@ -15,7 +15,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
-    const isV2 = request.originalUrl?.startsWith('/api/v2');
+    const isV2 = !request.originalUrl?.startsWith('/api/v1');
     // Todo ProblemDetails lleva instance, correlation_id y timestamp (trazabilidad, contrato v2 y RFC 7807).
     const enrich = (p: Record<string, unknown>) => ({
       ...p,

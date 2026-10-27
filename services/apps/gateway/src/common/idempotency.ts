@@ -56,11 +56,25 @@ export class IdempotencyInterceptor implements NestInterceptor {
     if (!key) return next.handle();
 
     const cacheKey = `${req.method}:${req.route?.path ?? req.path}:${JSON.stringify(req.params ?? {})}:${key}`;
-    const hit = this.cache.get<{ body: unknown }>(cacheKey);
+    const fingerprint = JSON.stringify(req.body ?? null);
+    const hit = this.cache.get<{ body: unknown; fingerprint: string }>(cacheKey);
     if (hit) {
+      // Misma clave con otra petición distinta: no es un reintento, es un uso indebido de la clave.
+      if (hit.fingerprint !== fingerprint) {
+        throw new HttpException(
+          {
+            type: 'https://booking.epn.edu.ec/errors/idempotency-conflict',
+            title: 'Conflicto de idempotencia',
+            status: HttpStatus.BAD_REQUEST,
+            detail: 'La Idempotency-Key ya se usó con un cuerpo distinto. Genera una clave nueva (UUID v4) para una operación diferente.',
+            code: 'IDEMPOTENCY_CONFLICT',
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
       res.setHeader('Idempotent-Replayed', 'true');
       return of(hit.body);
     }
-    return next.handle().pipe(tap((body) => this.cache.set(cacheKey, { body }, IdempotencyInterceptor.TTL_MS)));
+    return next.handle().pipe(tap((body) => this.cache.set(cacheKey, { body, fingerprint }, IdempotencyInterceptor.TTL_MS)));
   }
 }

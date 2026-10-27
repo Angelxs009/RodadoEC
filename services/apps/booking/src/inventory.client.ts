@@ -6,6 +6,9 @@ import { join } from 'path';
 import { protoDir } from '@autos/common';
 
 const TZ = 'America/Guayaquil';
+
+/** slot_id estándar del contrato: "slot-YYYYMMDD-HHMM" (p. ej. slot-20261025-1030). */
+export const slotIdOf = (date: string, slot: string) => `slot-${date.replace(/-/g, '')}-${slot.replace(':', '')}`;
 const DEADLINE_MS = 5000;
 
 /** Fecha (YYYY-MM-DD) y franja de 30 min (HH:00 | HH:30) de un instante, en hora de Ecuador. */
@@ -68,6 +71,7 @@ export class InventoryClient {
       time_slot: timeSlot,
       available_units: available ? 1 : 0,
       timestamp: String(Date.now()),
+      slot_id: slotIdOf(date, timeSlot),
     };
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
@@ -77,7 +81,8 @@ export class InventoryClient {
           ),
         );
         if (ack?.success) return;
-        this.logger.warn(`Booking rechazó el stock de ${itemId}: ${ack?.message}`);
+        // El acuse trae un error_code estándar (STALE_TIMESTAMP_IGNORED, ITEM_NOT_FOUND, INVALID_SLOT…): no se reintenta.
+        this.logger.warn(`Booking rechazó el stock de ${itemId} (${ack?.error_code || 'sin código'}): ${ack?.message}`);
         return;
       } catch (err) {
         if (attempt === 2) this.logger.warn(`No se pudo sincronizar el stock de ${itemId} con Booking: ${(err as Error).message}`);
@@ -106,6 +111,7 @@ export class InventoryClient {
           time_slot: slot,
           delta: it.available ? 1 : -1,
           timestamp: String(Date.now()),
+          slot_id: slotIdOf(date, slot),
         });
       }
       stream.end();

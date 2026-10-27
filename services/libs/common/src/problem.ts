@@ -149,7 +149,7 @@ export function invalidParams(detail: string, params: InvalidParam[]): HttpExcep
       title: 'Petición inválida',
       status: HttpStatus.BAD_REQUEST,
       detail,
-      code: ProblemCode.VALIDATION_FAILED,
+      code: 'MALFORMED_REQUEST',
       invalid_params: params,
     },
     HttpStatus.BAD_REQUEST,
@@ -189,3 +189,35 @@ export const vehicleInMaintenance = (vehicleId: string) =>
 
 export const invalidStateTransition = (detail: string) =>
   problem(HttpStatus.CONFLICT, 'INVALID_STATE_TRANSITION', 'Transición de estado no permitida', detail, `${V2_ERRORS}/invalid-state-transition`);
+
+/**
+ * 409 canónico del contrato v3 (Guía §4.3): el ÚNICO código que activa la compensación LIFO del orquestador
+ * de Sagas de Booking es 409 con code VEHICLE_UNAVAILABLE. `reason` precisa el motivo (cooldown, reservado…).
+ */
+export const vehicleUnavailable = (vehicleId: string, reason: string, detail: string) =>
+  new HttpException(
+    {
+      type: `${V2_ERRORS}/vehicle-unavailable`,
+      title: 'Vehículo No Disponible',
+      status: HttpStatus.CONFLICT,
+      detail,
+      code: 'VEHICLE_UNAVAILABLE',
+      reason,
+      vehicle_id: vehicleId,
+    },
+    HttpStatus.CONFLICT,
+  );
+
+/** 422: errores semánticos de fechas (no disparan compensaciones de Saga). */
+export const invalidDates = (params: InvalidParam[]) =>
+  new HttpException(
+    {
+      type: `${V2_ERRORS}/invalid-dates`,
+      title: 'Fechas inválidas',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: 'Las fechas de la reserva no son válidas.',
+      code: 'INVALID_DATES',
+      invalid_params: params,
+    },
+    HttpStatus.UNPROCESSABLE_ENTITY,
+  );
