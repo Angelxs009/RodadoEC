@@ -17,7 +17,9 @@
     "start:payments": "node dist/apps/payments/main",
     "start:identity": "node dist/apps/identity/main",
     "test:integration": "jest --config test/jest-integration.json --runInBand",
-    "check:contracts": "node ../contracts/check-compat.js"
+    "check:contracts": "node ../contracts/check-compat.js",
+    "build:all": "nest build all",
+    "start:all": "node dist/apps/all/apps/all/src/main.js"
   },
   "dependencies": {
     "@apollo/server": "^4.10.0",

@@ -1,0 +1,111 @@
+# Blueprint del sistema distribuido (Reto 2). Se usa creando un Blueprint en Render y eligiendo ESTE archivo
+# (el render.yaml original sigue describiendo el monolito, que permanece en línea hasta validar este sistema).
+#
+# BASE DE DATOS: este blueprint NO crea Postgres (Render solo permite uno gratis por cuenta y vence a los ~30 días).
+# Crea una gratis en Neon (neon.tech) o Supabase y pega su URL en DATABASE_URL de los 4 servicios.
+#
+# Topología: Vercel (frontend) → rodadoec-gateway (REST + GraphQL) ──gRPC/TLS──> catalog · booking · payments · identity
+# Booking llama además a catalog y payments (saga). Un solo Postgres con un schema por servicio.
+#
+# En el plan gratis Render expone un único puerto por servicio y termina TLS en su borde: por eso los
+# microservicios corren en modo GRPC_ON_PORT (gRPC directamente en $PORT) y se llaman por <host>:443 con GRPC_TLS=true.
+# Si algún nombre de servicio ya está tomado en Render, cámbialo aquí y en las variables *_GRPC_URL.
+
+envVarGroups:
+  - name: rodadoec-secrets          # mismos secretos en gateway e identity (el gateway valida lo que identity firma)
+    envVars:
+      - key: ADMIN_JWT_SECRET
+        generateValue: true
+      - key: CUSTOMER_JWT_SECRET
+        generateValue: true
+
+services:
+  - type: web
+    name: rodadoec-catalog
+    runtime: docker
+    dockerfilePath: ./services/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - { key: APP, value: catalog }
+      - { key: GRPC_ON_PORT, value: "true" }
+      - { key: NODE_ENV, value: production }
+      - { key: DATABASE_URL, sync: false }   # pega la URL de Postgres (Neon/Supabase o la externa de Render); los 4 servicios usan la misma, cada uno en su schema
+
+  - type: web
+    name: rodadoec-payments
+    runtime: docker
+    dockerfilePath: ./services/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - { key: APP, value: payments }
+      - { key: GRPC_ON_PORT, value: "true" }
+      - { key: NODE_ENV, value: production }
+      - { key: DATABASE_URL, sync: false }   # pega la URL de Postgres (Neon/Supabase o la externa de Render); los 4 servicios usan la misma, cada uno en su schema
+
+  - type: web
+    name: rodadoec-identity
+    runtime: docker
+    dockerfilePath: ./services/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - { key: APP, value: identity }
+      - { key: GRPC_ON_PORT, value: "true" }
+      - { key: NODE_ENV, value: production }
+      - { key: DATABASE_URL, sync: false }   # pega la URL de Postgres (Neon/Supabase o la externa de Render); los 4 servicios usan la misma, cada uno en su schema
+      - { key: ADMIN_USERNAME, sync: false }
+      - { key: ADMIN_PASSWORD, sync: false }
+      - fromGroup: rodadoec-secrets
+
+  - type: web
+    name: rodadoec-booking
+    runtime: docker
+    dockerfilePath: ./services/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - { key: APP, value: booking }
+      - { key: GRPC_ON_PORT, value: "true" }
+      - { key: NODE_ENV, value: production }
+      - { key: DATABASE_URL, sync: false }   # pega la URL de Postgres (Neon/Supabase o la externa de Render); los 4 servicios usan la misma, cada uno en su schema
+      - { key: GRPC_TLS, value: "true" }
+      - { key: CATALOG_GRPC_URL, value: "rodadoec-catalog.onrender.com:443" }
+      - { key: PAYMENTS_GRPC_URL, value: "rodadoec-payments.onrender.com:443" }
+      # Plan gratis: los servicios se duermen y despertar tarda ~30-60 s, por eso la tolerancia sube de los 5 s del contrato.
+      - { key: GRPC_TIMEOUT_MS, value: "60000" }
+      - { key: NODE_ID, value: NODE_AUT_LOCAL }
+      # Stock hacia Booking Prototipo (gRPC, contrato v2 §2.1). Vacío = desactivado.
+      - { key: INVENTORY_GRPC_URL, sync: false }
+      - { key: INVENTORY_GRPC_TLS, value: "true" }
+      - { key: INVENTORY_SYNC_ON_START, value: "false" }
+      # Brokers del agregador (contrato v2): RabbitMQ (exchange booking.events) y Kafka (topic-ordenes-b2b). Vacío = desactivado.
+      - { key: RABBITMQ_URL, sync: false }
+      - { key: KAFKA_BROKERS, sync: false }
+
+  - type: web
+    name: rodadoec-gateway
+    runtime: docker
+    dockerfilePath: ./services/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - { key: APP, value: gateway }
+      - { key: NODE_ENV, value: production }
+      - { key: GRPC_TLS, value: "true" }
+      - { key: CATALOG_GRPC_URL, value: "rodadoec-catalog.onrender.com:443" }
+      - { key: BOOKING_GRPC_URL, value: "rodadoec-booking.onrender.com:443" }
+      - { key: PAYMENTS_GRPC_URL, value: "rodadoec-payments.onrender.com:443" }
+      - { key: IDENTITY_GRPC_URL, value: "rodadoec-identity.onrender.com:443" }
+      - { key: CORS_ORIGINS, sync: false }
+      - { key: AUTH_ENFORCE_ADMIN, value: "true" }      # /admin exige JWT de ADMIN (el API es público: no dejar abierto)
+      - { key: AUTH_ENFORCE_CUSTOMER, value: "false" }  # "true" → /auth/me y /me/orders exigen JWT de CLIENTE
+      - { key: AUTH_ENFORCE_V2, value: "false" }        # "true" → las rutas protegidas del contrato v2 exigen JWT o X-API-Key
+      - { key: BOOKING_API_KEY, sync: false }           # clave M2M que Booking envía en X-API-Key
+      - { key: GRPC_TIMEOUT_MS, value: "60000" }
+      - { key: NODE_ID, value: NODE_AUT_LOCAL }
+      - { key: NODE_NAME, value: "RodadoEc (Flota Partner)" }
+      - { key: PUBLIC_ASSETS_URL, sync: false }         # origen del frontend, para foto_url absolutas (p. ej. https://rodado-ec.vercel.app)
+      - fromGroup: rodadoec-secrets

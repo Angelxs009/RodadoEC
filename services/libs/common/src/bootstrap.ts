@@ -55,6 +55,13 @@ export async function bootstrapService(o: ServiceOptions): Promise<void> {
     return;
   }
 
+  // NO_SERVICE_HTTP=true (proceso único, apps/all): el servicio solo habla gRPC en su puerto local; no abre HTTP.
+  if (/^(1|true)$/i.test(process.env.NO_SERVICE_HTTP ?? '')) {
+    await app.init();
+    logger.log(`${o.name} listo: gRPC :${grpcPort} (sin HTTP)`, 'bootstrap');
+    return;
+  }
+
   const httpPort = Number(process.env.PORT ?? o.defaultHttpPort);
   await app.listen(httpPort, '0.0.0.0');
   logger.log(`${o.name} listo: gRPC :${grpcPort} · HTTP /health :${httpPort}`, 'bootstrap');

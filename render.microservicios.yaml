@@ -1,111 +1,36 @@
-# Blueprint del sistema distribuido (Reto 2). Se usa creando un Blueprint en Render y eligiendo ESTE archivo
-# (el render.yaml original sigue describiendo el monolito, que permanece en línea hasta validar este sistema).
+# Blueprint de RodadoEc para Render (plan gratis): UN solo servicio web que aloja los 5 módulos en un proceso.
 #
-# BASE DE DATOS: este blueprint NO crea Postgres (Render solo permite uno gratis por cuenta y vence a los ~30 días).
-# Crea una gratis en Neon (neon.tech) o Supabase y pega su URL en DATABASE_URL de los 4 servicios.
+# Por qué un solo servicio: el proxy público de Render entrega las peticiones al servicio como HTTP/1.x, así que gRPC
+# entre servicios web separados devuelve 502 (verificado). Aquí Catálogo, Pagos, Identidad y Reservas siguen siendo
+# aplicaciones separadas (su módulo, su schema de base de datos y su servidor gRPC), y el gateway las llama por gRPC
+# en 127.0.0.1 dentro del mismo contenedor. Solo el gateway expone el puerto público ($PORT).
+# (La versión con 5 servicios independientes, para hosts con gRPC, está en render.distribuido.yaml.)
 #
-# Topología: Vercel (frontend) → rodadoec-gateway (REST + GraphQL) ──gRPC/TLS──> catalog · booking · payments · identity
-# Booking llama además a catalog y payments (saga). Un solo Postgres con un schema por servicio.
-#
-# En el plan gratis Render expone un único puerto por servicio y termina TLS en su borde: por eso los
-# microservicios corren en modo GRPC_ON_PORT (gRPC directamente en $PORT) y se llaman por <host>:443 con GRPC_TLS=true.
-# Si algún nombre de servicio ya está tomado en Render, cámbialo aquí y en las variables *_GRPC_URL.
-
-envVarGroups:
-  - name: rodadoec-secrets          # mismos secretos en gateway e identity (el gateway valida lo que identity firma)
-    envVars:
-      - key: ADMIN_JWT_SECRET
-        generateValue: true
-      - key: CUSTOMER_JWT_SECRET
-        generateValue: true
+# BASE DE DATOS: este blueprint NO crea Postgres. Crea una gratis en Neon (neon.tech) y pega su URL (sin "-pooler")
+# en DATABASE_URL. Cada módulo usa su propio schema dentro de esa base.
 
 services:
   - type: web
-    name: rodadoec-catalog
-    runtime: docker
-    dockerfilePath: ./services/Dockerfile
-    dockerContext: .
-    plan: free
-    envVars:
-      - { key: APP, value: catalog }
-      - { key: GRPC_ON_PORT, value: "true" }
-      - { key: NODE_ENV, value: production }
-      - { key: DATABASE_URL, sync: false }   # pega la URL de Postgres (Neon/Supabase o la externa de Render); los 4 servicios usan la misma, cada uno en su schema
-
-  - type: web
-    name: rodadoec-payments
-    runtime: docker
-    dockerfilePath: ./services/Dockerfile
-    dockerContext: .
-    plan: free
-    envVars:
-      - { key: APP, value: payments }
-      - { key: GRPC_ON_PORT, value: "true" }
-      - { key: NODE_ENV, value: production }
-      - { key: DATABASE_URL, sync: false }   # pega la URL de Postgres (Neon/Supabase o la externa de Render); los 4 servicios usan la misma, cada uno en su schema
-
-  - type: web
-    name: rodadoec-identity
-    runtime: docker
-    dockerfilePath: ./services/Dockerfile
-    dockerContext: .
-    plan: free
-    envVars:
-      - { key: APP, value: identity }
-      - { key: GRPC_ON_PORT, value: "true" }
-      - { key: NODE_ENV, value: production }
-      - { key: DATABASE_URL, sync: false }   # pega la URL de Postgres (Neon/Supabase o la externa de Render); los 4 servicios usan la misma, cada uno en su schema
-      - { key: ADMIN_USERNAME, sync: false }
-      - { key: ADMIN_PASSWORD, sync: false }
-      - fromGroup: rodadoec-secrets
-
-  - type: web
-    name: rodadoec-booking
-    runtime: docker
-    dockerfilePath: ./services/Dockerfile
-    dockerContext: .
-    plan: free
-    envVars:
-      - { key: APP, value: booking }
-      - { key: GRPC_ON_PORT, value: "true" }
-      - { key: NODE_ENV, value: production }
-      - { key: DATABASE_URL, sync: false }   # pega la URL de Postgres (Neon/Supabase o la externa de Render); los 4 servicios usan la misma, cada uno en su schema
-      - { key: GRPC_TLS, value: "true" }
-      - { key: CATALOG_GRPC_URL, value: "rodadoec-catalog.onrender.com:443" }
-      - { key: PAYMENTS_GRPC_URL, value: "rodadoec-payments.onrender.com:443" }
-      # Plan gratis: los servicios se duermen y despertar tarda ~30-60 s, por eso la tolerancia sube de los 5 s del contrato.
-      - { key: GRPC_TIMEOUT_MS, value: "60000" }
-      - { key: NODE_ID, value: NODE_AUT_LOCAL }
-      # Stock hacia Booking Prototipo (gRPC, contrato v2 §2.1). Vacío = desactivado.
-      - { key: INVENTORY_GRPC_URL, sync: false }
-      - { key: INVENTORY_GRPC_TLS, value: "true" }
-      - { key: INVENTORY_SYNC_ON_START, value: "false" }
-      # Brokers del agregador (contrato v2): RabbitMQ (exchange booking.events) y Kafka (topic-ordenes-b2b). Vacío = desactivado.
-      - { key: RABBITMQ_URL, sync: false }
-      - { key: KAFKA_BROKERS, sync: false }
-
-  - type: web
-    name: rodadoec-gateway
+    name: rodadoec-api
     runtime: docker
     dockerfilePath: ./services/Dockerfile
     dockerContext: .
     plan: free
     healthCheckPath: /health
     envVars:
-      - { key: APP, value: gateway }
+      - { key: APP, value: all }
       - { key: NODE_ENV, value: production }
-      - { key: GRPC_TLS, value: "true" }
-      - { key: CATALOG_GRPC_URL, value: "rodadoec-catalog.onrender.com:443" }
-      - { key: BOOKING_GRPC_URL, value: "rodadoec-booking.onrender.com:443" }
-      - { key: PAYMENTS_GRPC_URL, value: "rodadoec-payments.onrender.com:443" }
-      - { key: IDENTITY_GRPC_URL, value: "rodadoec-identity.onrender.com:443" }
-      - { key: CORS_ORIGINS, sync: false }
-      - { key: AUTH_ENFORCE_ADMIN, value: "true" }      # /admin exige JWT de ADMIN (el API es público: no dejar abierto)
-      - { key: AUTH_ENFORCE_CUSTOMER, value: "false" }  # "true" → /auth/me y /me/orders exigen JWT de CLIENTE
-      - { key: AUTH_ENFORCE_V2, value: "false" }        # "true" → las rutas protegidas del contrato v2 exigen JWT o X-API-Key
-      - { key: BOOKING_API_KEY, sync: false }           # clave M2M que Booking envía en X-API-Key
-      - { key: GRPC_TIMEOUT_MS, value: "60000" }
+      - { key: NODE_OPTIONS, value: "--max-old-space-size=360" }   # los 5 módulos en un proceso deben caber en 512 MB
+      - { key: DATABASE_URL, sync: false }
+      - { key: ADMIN_USERNAME, sync: false }
+      - { key: ADMIN_PASSWORD, sync: false }
+      - { key: ADMIN_JWT_SECRET, generateValue: true }
+      - { key: CUSTOMER_JWT_SECRET, generateValue: true }
+      - { key: CORS_ORIGINS, value: "https://rodado-ec.vercel.app" }
+      - { key: PUBLIC_ASSETS_URL, value: "https://rodado-ec.vercel.app" }
+      - { key: AUTH_ENFORCE_ADMIN, value: "true" }      # el API es público: /admin exige JWT de ADMIN
+      - { key: AUTH_ENFORCE_CUSTOMER, value: "false" }
+      - { key: AUTH_ENFORCE_V2, value: "false" }        # "true" → rutas protegidas del contrato exigen JWT o X-API-Key
       - { key: NODE_ID, value: NODE_AUT_LOCAL }
       - { key: NODE_NAME, value: "RodadoEc (Flota Partner)" }
-      - { key: PUBLIC_ASSETS_URL, sync: false }         # origen del frontend, para foto_url absolutas (p. ej. https://rodado-ec.vercel.app)
-      - fromGroup: rodadoec-secrets
+      # Opcionales (agrégalos en el panel si los necesitas): INVENTORY_GRPC_URL, RABBITMQ_URL, KAFKA_BROKERS, BOOKING_API_KEY
