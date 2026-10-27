@@ -45,6 +45,16 @@ export class CatalogController {
     return {};
   }
 
+  @GrpcMethod(S, 'TransitionVehicle')
+  transitionVehicle(req: any) {
+    return this.catalog.transitionVehicle(req);
+  }
+
+  @GrpcMethod(S, 'RecordMaintenance')
+  recordMaintenance(req: any) {
+    return this.catalog.recordMaintenance(req);
+  }
+
   @GrpcMethod(S, 'AdminListVehicles')
   adminListVehicles() {
     return this.catalog.adminListVehicles();

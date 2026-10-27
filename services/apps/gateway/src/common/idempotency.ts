@@ -55,7 +55,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const key = req.headers['idempotency-key'] as string | undefined;
     if (!key) return next.handle();
 
-    const cacheKey = `${req.method}:${req.route?.path ?? req.path}:${req.params?.orderId ?? ''}:${key}`;
+    const cacheKey = `${req.method}:${req.route?.path ?? req.path}:${JSON.stringify(req.params ?? {})}:${key}`;
     const hit = this.cache.get<{ body: unknown }>(cacheKey);
     if (hit) {
       res.setHeader('Idempotent-Replayed', 'true');

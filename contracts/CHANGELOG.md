@@ -17,7 +17,9 @@ Un cambio MAJOR **no muta** el contrato existente: se publica uno nuevo (`autos.
 
 | Contrato | Archivo | Versión |
 |---|---|---|
-| REST público (OpenAPI, ruta `/api/v1`) | `autos-openapi.yaml` | 1.1.0 |
+| REST del agregador Booking (OpenAPI, ruta `/api/v2`) — **contrato oficial vigente** | `autos-openapi-v2.yaml` | 2.0.0 |
+| REST público original (OpenAPI, ruta `/api/v1`) | `autos-openapi.yaml` | 1.1.0 |
+| gRPC de stock hacia Booking (`inventory.InventoryStockService`) | `proto/inventory/inventory.proto` | tal como lo publica Booking |
 | Eventos de dominio (AsyncAPI) | `autos-asyncapi.yaml` | 1.1.0 |
 | gRPC común | `proto/autos/common/v1/common.proto` | v1 |
 | gRPC Catálogo | `proto/autos/catalog/v1/catalog.proto` | v1 |
@@ -25,6 +27,23 @@ Un cambio MAJOR **no muta** el contrato existente: se publica uno nuevo (`autos.
 | gRPC Pagos | `proto/autos/payments/v1/payments.proto` | v1 |
 | gRPC Identidad | `proto/autos/identity/v1/identity.proto` | v1 |
 | GraphQL federado (subgrafo) | `graphql/autos.graphql` | 1.0.0 |
+
+## 2.0.0 (REST v2) — contrato oficial del agregador Booking Prototipo
+
+`autos-openapi-v2.yaml` es el archivo entregado por el agregador; se copia **sin modificar** y es la fuente de verdad.
+El gateway lo implementa completo en `/api/v2/autos/*` (19 operaciones) y lo publica como Swagger en `/api/docs-v2`.
+La v1 sigue en `/api/v1` sin cambios de ruta ni de forma (compatibilidad hacia atrás).
+
+- Máquina de 6 estados del auto: `DISPONIBLE → RESERVADO → LISTO_PARA_ENTREGAR → ENTREGADO → EN_LIMPIEZA → EN_MANTENIMIENTO`.
+- Cooldown obligatorio de 2 h tras la devolución (`EN_LIMPIEZA`): el auto sale de las búsquedas y reservarlo da 409 `VEHICLE_IN_CLEANING_COOLDOWN`.
+- Tres check-ins: digital (`/reservas/{id}/checkin`), entrega (`checkin-entrega`) y devolución (`checkin-devolucion`), más `/{id}/devolucion`.
+- Mantenimiento preventivo con RBAC (`X-Role`: MANTENIMIENTO o ADMIN) y bitácora `BIT-AUTO-nn`.
+- Acuerdo B2B de promociones (`/promociones/contrato`), telemetría (`/health`, `/flota`) y feed Outbox de CloudEvents (`/eventos`).
+- Errores RFC 7807 con `instance`, `correlation_id`, `timestamp` e `invalid_params`; edad menor de 18 → 422; recargo por conductor <25 o >70 años.
+- Seguridad: JWT o `X-API-Key` (`AUTH_ENFORCE_V2=true` la exige; apagada por defecto para probar en Swagger).
+- gRPC hacia Booking: cada cambio de stock se empuja con `PushStockUpdate` y la flota completa con `StreamInventoryChanges` (`INVENTORY_GRPC_URL`).
+- gRPC interno (MINOR, solo se agregaron campos y RPCs; nada se renumeró): `Vehicle` (+odómetro, mantenimiento, fin de cooldown), `Order` (+cobertura, depósito, km, check-in, reembolso), `CatalogService.TransitionVehicle/RecordMaintenance`, `BookingService` (+10 RPCs v2), `ChargeRequest.channel`.
+- Localizador de reserva: ahora `CAR` + 5 caracteres (8 en total, como exige el v2); la v1 lo devuelve con el mismo formato.
 
 ## 1.1.0 (REST/AsyncAPI) — arquitectura de microservicios (Reto 2)
 

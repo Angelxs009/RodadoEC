@@ -18,6 +18,10 @@ service CatalogService {
   // Reserva atómica: AVAILABLE -> RESERVED. reserved=false si ya no estaba libre.
   rpc ReserveVehicle(VehicleRef) returns (ReserveResult);
   rpc ReleaseVehicle(VehicleRef) returns (autos.common.v1.Empty);
+  // Máquina de estados (contrato v2): transición atómica solo si el auto está en alguno de from_statuses.
+  rpc TransitionVehicle(TransitionRequest) returns (TransitionResult);
+  // Registro técnico de mantenimiento: odómetro, revisión física y alerta preventiva.
+  rpc RecordMaintenance(MaintenanceRequest) returns (MaintenanceResult);
 
   // ── Administración ────────────────────────────────────────────────────
   rpc AdminListVehicles(autos.common.v1.Empty) returns (VehicleList);
@@ -104,7 +108,7 @@ message UpdateVehicleRequest {
 
 message SetStatusRequest {
   string id = 1;
-  string status = 2; // AVAILABLE | RESERVED
+  string status = 2; // AVAILABLE | RESERVED | READY_FOR_DELIVERY | DELIVERED | CLEANING | MAINTENANCE
 }
 
 message DepotInput {
@@ -119,4 +123,36 @@ message UpdateDepotRequest {
   string id = 1;
   DepotInput patch = 2;
   repeated string fields = 3;
+}
+
+message TransitionRequest {
+  string vehicle_id = 1;
+  repeated string from_statuses = 2; // vacío = desde cualquier estado
+  string to_status = 3;
+  int32 odometer_km = 4;             // 0 = no cambia
+  string available_from = 5;         // ISO-8601, solo para CLEANING
+}
+
+message TransitionResult {
+  bool changed = 1;                  // false si el auto no estaba en un estado de origen permitido
+  autos.common.v1.Vehicle vehicle = 2;
+}
+
+message MaintenanceRequest {
+  string vehicle_id = 1;
+  string technician_id = 2;
+  int32 odometer_km = 3;
+  int32 fuel_level = 4;
+  string body_condition = 5;
+  string tires_condition = 6;
+  string notes = 7;
+  bool maintenance_done = 8;
+  int32 new_next_maintenance_km = 9; // 0 = por defecto (odómetro + 10000)
+}
+
+message MaintenanceResult {
+  autos.common.v1.Vehicle vehicle = 1;
+  bool alert = 2;                    // odómetro >= próximo mantenimiento
+  string log_id = 3;                 // BIT-AUTO-nn
+  string timestamp = 4;
 }

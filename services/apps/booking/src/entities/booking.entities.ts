@@ -13,6 +13,9 @@ export enum OrderStatus {
   CONFIRMED = 'CONFIRMED',
   CANCELLED = 'CANCELLED',
   PENDING = 'PENDING',
+  // Fases presenciales del contrato v2
+  DELIVERED = 'ENTREGADO',
+  COMPLETED = 'COMPLETADA',
 }
 
 export enum WebhookEvent {
@@ -21,6 +24,8 @@ export enum WebhookEvent {
   CAR_PAYMENT_APPROVED = 'CAR_PAYMENT_APPROVED',
   CAR_VEHICLE_RESERVED = 'CAR_VEHICLE_RESERVED',
   CAR_VEHICLE_RELEASED = 'CAR_VEHICLE_RELEASED',
+  CAR_COOLDOWN_STARTED = 'CAR_COOLDOWN_STARTED',
+  CAR_MAINTENANCE_ALERT = 'CAR_MAINTENANCE_ALERT',
   DEPOT_UPDATE = 'DEPOT_UPDATE',
 }
 
@@ -64,6 +69,78 @@ export class Order {
 
   @CreateDateColumn({ type: 'timestamptz' })
   creation_date: Date;
+
+  // ── Contrato v2 ──
+  @Column({ type: 'varchar', length: 10, default: 'BASICA' })
+  coverage_type: string;
+
+  @Column('numeric', { precision: 10, scale: 2, transformer: new NumericTransformer(), default: 0 })
+  deposit: number;
+
+  @Column({ type: 'jsonb', nullable: true })
+  pricing: { days: number; base: number; coverage: number; surcharge: number } | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  checkin_at: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  delivered_at: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  returned_at: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  km_salida: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  km_retorno: number | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  refund: { refund_id: string; amount: number; currency: string; percentage: number; status: string } | null;
+}
+
+/** Transactional Outbox: cada evento de dominio se asienta aquí como CloudEvent y se publica por GET /autos/eventos. */
+@Entity('outbox_events')
+export class OutboxEvent {
+  @PrimaryGeneratedColumn()
+  seq: number;
+
+  @Column({ type: 'varchar', length: 60, unique: true })
+  event_id: string;
+
+  @Column({ type: 'varchar', length: 120 })
+  type: string;
+
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  correlation_id: string | null;
+
+  @Column({ type: 'jsonb' })
+  data: Record<string, unknown>;
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  time: Date;
+}
+
+/** Acuerdo B2B de promociones y combos (Cátedra RDA2 §9): una sola fila. */
+@Entity('promo_contract')
+export class PromoContract {
+  @PrimaryColumn({ type: 'int' })
+  id: number;
+
+  @Column({ type: 'boolean', default: true })
+  allows_promotions: boolean;
+
+  @Column('numeric', { precision: 5, scale: 2, transformer: new NumericTransformer(), default: 15 })
+  max_discount_percentage: number;
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  enabled_destinations: string[];
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  valid_until: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  combo_conditions: string | null;
 }
 
 @Entity('webhook_subscriptions')

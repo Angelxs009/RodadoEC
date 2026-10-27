@@ -24,7 +24,7 @@ import { WebhookSubscriptionDto } from '../dto/autos/webhook.dto';
  * Contrato REST público de Autos (autos-openapi.yaml, ruta /api/v1). Es una fachada: valida la petición y
  * la reparte por gRPC a Catálogo (autos, agencias, proveedores) o Reservas (búsqueda, órdenes, pagos, webhooks).
  */
-@Controller()
+@Controller('v1')
 export class AutosController {
   constructor(private readonly backends: Backends) {}
 

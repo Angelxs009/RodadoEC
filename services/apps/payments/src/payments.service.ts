@@ -60,8 +60,11 @@ export function toPaymentMsg(p: Payment) {
 export class PaymentsService {
   constructor(@InjectRepository(Payment) private readonly payments: Repository<Payment>) {}
 
-  async charge(req: { order_preview_id: string; amount: number; currency: string; card: Card }) {
-    const reason = this.evaluateCard(req.card);
+  async charge(req: { order_preview_id: string; amount: number; currency: string; card?: Card; channel?: string }) {
+    // Canal B2B (contrato v2): Booking liquida con la tienda, no hay tarjeta que evaluar.
+    const b2b = req.channel === 'B2B';
+    const card: Card = b2b ? { holder_name: 'BOOKING B2B', number: '0000000000000000', expiry_month: 12, expiry_year: 2099, cvv: '000' } : (req.card as Card);
+    const reason = b2b ? null : this.evaluateCard(card);
     const saved = await this.payments.save(
       this.payments.create({
         reference: `PAY-${randomUUID().slice(0, 10).toUpperCase()}`,
@@ -69,9 +72,9 @@ export class PaymentsService {
         amount: req.amount,
         currency: req.currency || 'USD',
         order_preview_id: req.order_preview_id,
-        card_brand: cardBrand(req.card.number),
-        card_last4: req.card.number.slice(-4),
-        cardholder_name: req.card.holder_name,
+        card_brand: b2b ? 'B2B' : cardBrand(card.number),
+        card_last4: card.number.slice(-4),
+        cardholder_name: card.holder_name,
         decline_reason: reason,
         order_id: null,
       }),

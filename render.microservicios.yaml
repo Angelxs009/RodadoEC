@@ -75,6 +75,13 @@ services:
       - { key: GRPC_TLS, value: "true" }
       - { key: CATALOG_GRPC_URL, value: "rodadoec-catalog.onrender.com:443" }
       - { key: PAYMENTS_GRPC_URL, value: "rodadoec-payments.onrender.com:443" }
+      # Plan gratis: los servicios se duermen y despertar tarda ~30-60 s, por eso la tolerancia sube de los 5 s del contrato.
+      - { key: GRPC_TIMEOUT_MS, value: "60000" }
+      - { key: NODE_ID, value: NODE_AUT_LOCAL }
+      # Stock hacia Booking Prototipo (gRPC, contrato v2 §2.1). Vacío = desactivado.
+      - { key: INVENTORY_GRPC_URL, sync: false }
+      - { key: INVENTORY_GRPC_TLS, value: "true" }
+      - { key: INVENTORY_SYNC_ON_START, value: "false" }
 
   - type: web
     name: rodadoec-gateway
@@ -94,4 +101,10 @@ services:
       - { key: CORS_ORIGINS, sync: false }
       - { key: AUTH_ENFORCE_ADMIN, value: "false" }     # "true" → /admin exige JWT de ADMIN
       - { key: AUTH_ENFORCE_CUSTOMER, value: "false" }  # "true" → /auth/me y /me/orders exigen JWT de CLIENTE
+      - { key: AUTH_ENFORCE_V2, value: "false" }        # "true" → las rutas protegidas del contrato v2 exigen JWT o X-API-Key
+      - { key: BOOKING_API_KEY, sync: false }           # clave M2M que Booking envía en X-API-Key
+      - { key: GRPC_TIMEOUT_MS, value: "60000" }
+      - { key: NODE_ID, value: NODE_AUT_LOCAL }
+      - { key: NODE_NAME, value: "RodadoEc (Flota Partner)" }
+      - { key: PUBLIC_ASSETS_URL, sync: false }         # origen del frontend, para foto_url absolutas (p. ej. https://rodado-ec.vercel.app)
       - fromGroup: rodadoec-secrets

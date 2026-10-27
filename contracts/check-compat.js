@@ -59,7 +59,7 @@ function protoSurface(file) {
   visit(root);
   // versión = paquete (autos.<svc>.v1) → mayor v1
   const pkg = fs.readFileSync(file, 'utf8').match(/^package\s+([\w.]+);/m)?.[1] || '';
-  return { version: pkg.match(/\.v(\d+)$/)?.[1] + '.0.0', surface: s };
+  return { version: (pkg.match(/\.v(\d+)$/)?.[1] ?? '1') + '.0.0', surface: s };
 }
 function graphqlSurface(file) {
   const text = fs.readFileSync(file, 'utf8');
@@ -78,7 +78,7 @@ function current() {
   const out = {};
   for (const f of walk(dir)) {
     const r = rel(f);
-    if (r === 'autos-openapi.yaml') out[r] = openapiSurface(f);
+    if (r === 'autos-openapi.yaml' || r === 'autos-openapi-v2.yaml') out[r] = openapiSurface(f);
     else if (r === 'autos-asyncapi.yaml') out[r] = asyncSurface(f);
     else if (r.endsWith('.proto')) out[r] = protoSurface(f);
     else if (r.endsWith('.graphql')) out[r] = graphqlSurface(f);

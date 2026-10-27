@@ -4,5 +4,6 @@ export * from './database';
 export * from './grpc';
 export * from './jwt';
 export * from './logger';
+export * from './pricing';
 export * from './problem';
 export * from './ttl-cache';

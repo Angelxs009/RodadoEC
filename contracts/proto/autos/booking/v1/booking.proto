@@ -23,6 +23,27 @@ service BookingService {
   rpc DeleteWebhook(WebhookRef) returns (autos.common.v1.Empty);
   // Registro de entregas de webhooks (éxitos y fallos tras agotar los reintentos): hace de "dead letter" consultable.
   rpc ListWebhookDeliveries(autos.common.v1.Empty) returns (WebhookDeliveryList);
+
+  // ── Contrato REST v2 (autos-openapi-v2.yaml) ──────────────────────────
+  // Reserva directa B2B: sin hold/preview; la liquidación se simula internamente en Pagos (canal B2B).
+  rpc CreateOrderV2(CreateOrderV2Request) returns (Order);
+  rpc CancelOrderV2(OrderRef) returns (CancelResult);
+  // Check-in 1 (digital express): valida licencia y deja el auto LISTO_PARA_ENTREGAR.
+  rpc CheckinDigital(CheckinDigitalRequest) returns (CheckinDigitalResult);
+  // Check-in 2 (mostrador): odómetro de salida, el auto pasa a ENTREGADO.
+  rpc DeliverOrder(DeliverOrderRequest) returns (Order);
+  // Check-in 3 (patio): odómetro de retorno; la orden se completa y el auto entra en cooldown de limpieza de 2 h.
+  rpc ReturnOrder(ReturnOrderRequest) returns (ReturnResult);
+  // Devolución directa del vehículo (sin pasar por la orden).
+  rpc ReturnVehicle(ReturnVehicleRequest) returns (ReturnResult);
+  rpc RegisterMaintenance(RegisterMaintenanceRequest) returns (MaintenanceResult);
+  // Feed Transactional Outbox de eventos CloudEvents.
+  rpc ListEvents(ListEventsRequest) returns (EventList);
+  // Acuerdo B2B de promociones y combos.
+  rpc GetPromoContract(autos.common.v1.Empty) returns (PromoContract);
+  rpc SetPromoContract(PromoContract) returns (PromoContract);
+  // Sincronización masiva del stock de la flota hacia Booking Prototipo (inventory.StreamInventoryChanges).
+  rpc SyncInventory(autos.common.v1.Empty) returns (SyncResult);
 }
 
 message SearchFilters {
@@ -120,7 +141,7 @@ message CreateOrderRequest {
 message Order {
   string order_id = 1;
   string locator = 2;
-  string status = 3; // CONFIRMED | CANCELLED | PENDING
+  string status = 3; // CONFIRMED | CANCELLED | PENDING | ENTREGADO | COMPLETADA
   autos.common.v1.Vehicle vehicle = 4;
   autos.common.v1.Route route = 5;
   repeated string extras = 6;
@@ -130,6 +151,155 @@ message Order {
   string customer_id = 10;
   string payment_reference = 11;
   autos.common.v1.DriverDetails driver_details = 12;
+  // Campos del contrato v2 (vacío / 0 = no definido)
+  string coverage_type = 13;     // BASICA | TOTAL
+  double deposit = 14;           // depósito de garantía retenido
+  PricingV2 pricing = 15;
+  int32 km_salida = 16;
+  int32 km_retorno = 17;
+  string checkin_at = 18;
+  string delivered_at = 19;
+  string returned_at = 20;
+  RefundInfo refund = 21;        // presente solo si la orden se canceló
+}
+
+message PricingV2 {
+  int32 days = 1;
+  double base = 2;
+  double coverage = 3;
+  double surcharge = 4;
+}
+
+message RefundInfo {
+  string refund_id = 1;
+  double amount = 2;
+  string currency = 3;
+  int32 percentage = 4;
+  string status = 5;
+}
+
+message DriverV2 {
+  string full_name = 1;
+  string email = 2;
+  string phone = 3;
+  string license = 4;
+  string license_country = 5;
+  int32 age = 6;
+  string flight_number = 7;
+}
+
+message CreateOrderV2Request {
+  string vehicle_id = 1;
+  string pickup_date = 2;     // YYYY-MM-DD
+  string pickup_time = 3;     // HH:MM (franja de 30 min)
+  string dropoff_date = 4;
+  string dropoff_time = 5;
+  autos.common.v1.Location pickup_location = 6;
+  autos.common.v1.Location dropoff_location = 7;
+  string coverage_type = 8;   // BASICA | TOTAL
+  DriverV2 driver = 9;
+  string customer_id = 10;
+}
+
+message CancelResult {
+  Order order = 1;
+  RefundInfo refund = 2;
+  string vehicle_id = 3;
+  string vehicle_state = 4;   // estado al que vuelve el auto (AVAILABLE)
+}
+
+message CheckinDigitalRequest {
+  string order_id = 1;        // uuid o PNR
+  string document_id = 2;
+  string license_number = 3;
+  string license_expiry = 4;  // YYYY-MM-DD
+}
+
+message CheckinDigitalResult {
+  string order_id = 1;
+  string pnr = 2;
+  string checkin_status = 3;  // CHECKIN_COMPLETED
+  bool fast_track_pickup = 4;
+  string voucher_qr_data = 5;
+}
+
+message DeliverOrderRequest {
+  string order_id = 1;
+  string license = 2;
+  int32 km_salida = 3;
+  string technician = 4;
+}
+
+message ReturnOrderRequest {
+  string order_id = 1;
+  int32 km_retorno = 2;
+  int32 fuel_level = 3;
+  string notes = 4;
+}
+
+message ReturnVehicleRequest {
+  string vehicle_id = 1;
+}
+
+message ReturnResult {
+  Order order = 1;                 // ausente en la devolución directa sin orden activa
+  int32 km_driven = 2;
+  autos.common.v1.Vehicle vehicle = 3;
+  int32 cooldown_hours = 4;
+  string available_from = 5;
+  string maintenance_alert = 6;    // vacío si el kilometraje está en rango normal
+}
+
+message RegisterMaintenanceRequest {
+  string vehicle_id = 1;
+  string technician_id = 2;
+  int32 odometer_km = 3;
+  int32 fuel_level = 4;
+  string body_condition = 5;
+  string tires_condition = 6;
+  string notes = 7;
+  bool maintenance_done = 8;
+  int32 new_next_maintenance_km = 9;
+}
+
+message MaintenanceResult {
+  autos.common.v1.Vehicle vehicle = 1;
+  bool alert = 2;
+  string log_id = 3;
+  string timestamp = 4;
+}
+
+message ListEventsRequest {
+  int32 limit = 1;     // 0 = 10
+  string after = 2;    // id del último evento ya consumido
+}
+
+message CloudEvent {
+  string specversion = 1;
+  string type = 2;
+  string source = 3;
+  string id = 4;
+  string time = 5;
+  string correlation_id = 6;
+  string datacontenttype = 7;
+  string data_json = 8;
+}
+
+message EventList {
+  repeated CloudEvent events = 1;
+  int32 total = 2;
+  string timestamp = 3;
+}
+
+message PromoContract {
+  string provider_code = 1;
+  string partner_name = 2;
+  string vertical = 3;
+  bool allows_promotions = 4;
+  double max_discount_percentage = 5;
+  repeated string enabled_destinations = 6;
+  string valid_until = 7;      // YYYY-MM-DD
+  string combo_conditions = 8;
 }
 
 message OrderRef {
@@ -188,4 +358,10 @@ message WebhookDelivery {
 
 message WebhookDeliveryList {
   repeated WebhookDelivery deliveries = 1;
+}
+
+message SyncResult {
+  bool enabled = 1;        // false si INVENTORY_GRPC_URL no está configurada
+  int32 total = 2;
+  bool synchronized = 3;
 }

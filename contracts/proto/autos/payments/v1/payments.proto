@@ -30,6 +30,8 @@ message ChargeRequest {
   double amount = 2;
   string currency = 3;
   Card card = 4;
+  // CARD (por defecto) o B2B: liquidación simulada entre Booking y la tienda, sin tarjeta (contrato REST v2).
+  string channel = 5;
 }
 
 message Payment {

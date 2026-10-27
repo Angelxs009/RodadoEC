@@ -40,7 +40,7 @@ const depotInput = (d: Partial<CreateDepotAdminDto>) => ({
  * agencias), Reservas (órdenes, entregas de webhooks) e Identidad (usuarios). Con AUTH_ENFORCE_ADMIN=true
  * exige un JWT de ADMIN (ver common/auth.ts).
  */
-@Controller('admin')
+@Controller('v1/admin')
 @ApiTags('Administración')
 @Roles('ADMIN')
 export class AdminController {
@@ -124,6 +124,18 @@ export class AdminController {
   @ApiOperation({ summary: 'Detalle administrativo de una orden' })
   async getOrder(@Param('id', ParseUUIDPipe) id: string) {
     return orderToRaw(await this.backends.booking.call('GetOrder', { order_id: id }));
+  }
+
+  // ── Stock hacia Booking Prototipo (gRPC) ─────────────────────────────────
+  @Post('inventory/sync')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Sincronizar todo el stock de la flota con Booking Prototipo',
+    description:
+      'Envía el estado de cada auto por gRPC (inventory.InventoryStockService/StreamInventoryChanges). Requiere INVENTORY_GRPC_URL; sin ella responde enabled=false.',
+  })
+  syncInventory() {
+    return this.backends.booking.call('SyncInventory', {});
   }
 
   // ── Observabilidad de eventos ────────────────────────────────────────────

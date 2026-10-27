@@ -16,7 +16,7 @@ import { ClientGrpc, GrpcOptions, RpcException, Transport } from '@nestjs/micros
 import { ChannelCredentials, Metadata, status } from '@grpc/grpc-js';
 import { existsSync } from 'fs';
 import { dirname, join } from 'path';
-import { firstValueFrom, Observable, throwError } from 'rxjs';
+import { firstValueFrom, Observable, throwError, timeout } from 'rxjs';
 import { CORRELATION_HEADER, currentCorrelationId, runWithCorrelation } from './correlation';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -130,14 +130,14 @@ export function fromRpcError(err: any): HttpException {
       /* no era JSON: se trata como error de transporte */
     }
   }
-  const unavailable = err?.code === status.UNAVAILABLE || err?.code === status.DEADLINE_EXCEEDED;
+  const unavailable = err?.code === status.UNAVAILABLE || err?.code === status.DEADLINE_EXCEEDED || err?.name === 'TimeoutError';
   const httpStatus = unavailable ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.BAD_GATEWAY;
   return new HttpException(
     {
       type: 'https://api.booking-hub.com/errors/service-unavailable',
       title: unavailable ? 'Servicio no disponible' : 'Error en un servicio interno',
       status: httpStatus,
-      detail: err?.details || err?.message || 'Fallo la comunicación con un microservicio.',
+      detail: err?.name === 'TimeoutError' ? 'El microservicio no respondió dentro del tiempo de tolerancia.' : err?.details || err?.message || 'Fallo la comunicación con un microservicio.',
       code: unavailable ? 'SERVICE_UNAVAILABLE' : 'UPSTREAM_ERROR',
     },
     httpStatus,
@@ -175,23 +175,63 @@ export const GrpcController = () =>
 //  Cliente gRPC tipado con correlation id y errores ya traducidos
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type BreakerState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+
+const callTimeoutMs = () => Number(process.env.GRPC_TIMEOUT_MS ?? 5000);
+const BREAKER_THRESHOLD = 5; // fallos de transporte seguidos que abren el circuito
+const BREAKER_OPEN_MS = 10_000;
+
+/**
+ * Cliente gRPC con tolerancia perimetral: cada llamada expira a los 5 s (GRPC_TIMEOUT_MS) y un Circuit
+ * Breaker corta las llamadas a un servicio caído (falla rápido con 503 en vez de colgarse) hasta que se
+ * recupere. Un error de dominio (404, 409…) prueba que el servicio responde, así que no cuenta como fallo.
+ */
 export class GrpcCaller {
   private svc: any;
+  private failures = 0;
+  private openUntil = 0;
 
   constructor(
     private readonly client: ClientGrpc,
     private readonly serviceName: string,
   ) {}
 
+  get breakerState(): BreakerState {
+    if (!this.openUntil) return 'CLOSED';
+    return Date.now() < this.openUntil ? 'OPEN' : 'HALF_OPEN';
+  }
+
   async call<T = any>(method: string, data: object = {}): Promise<T> {
+    if (this.breakerState === 'OPEN') {
+      throw new HttpException(
+        {
+          type: 'https://api.booking-hub.com/errors/service-unavailable',
+          title: 'Servicio no disponible',
+          status: HttpStatus.SERVICE_UNAVAILABLE,
+          detail: `Circuit Breaker abierto: ${this.serviceName} no responde; se reintentará en unos segundos.`,
+          code: 'SERVICE_UNAVAILABLE',
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
     this.svc ??= this.client.getService<any>(this.serviceName);
     const metadata = new Metadata();
     const cid = currentCorrelationId();
     if (cid) metadata.set(CORRELATION_HEADER, cid);
     try {
-      return await firstValueFrom<T>(this.svc[method](data, metadata));
+      const result = await firstValueFrom<T>(this.svc[method](data, metadata).pipe(timeout(callTimeoutMs())));
+      this.failures = 0;
+      this.openUntil = 0;
+      return result;
     } catch (err) {
-      throw fromRpcError(err);
+      const http = fromRpcError(err);
+      if (http.getStatus() >= 502) {
+        if (++this.failures >= BREAKER_THRESHOLD) this.openUntil = Date.now() + BREAKER_OPEN_MS;
+      } else {
+        this.failures = 0;
+        this.openUntil = 0;
+      }
+      throw http;
     }
   }
 }

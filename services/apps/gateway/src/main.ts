@@ -2,8 +2,11 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { randomUUID } from 'crypto';
+import { existsSync, readFileSync } from 'fs';
+import { load as loadYaml } from 'js-yaml';
+import { join } from 'path';
 import { NextFunction, Request, Response } from 'express';
-import { CORRELATION_HEADER, runWithCorrelation, SERVICE_VERSION, StructuredLogger } from '@autos/common';
+import { CORRELATION_HEADER, protoDir, runWithCorrelation, SERVICE_VERSION, StructuredLogger } from '@autos/common';
 import { enforceAdmin } from './common/auth';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 import { WebhookPayloadDto } from './dto/autos/webhook.dto';
@@ -19,8 +22,8 @@ async function bootstrap() {
     exposedHeaders: [CORRELATION_HEADER, 'Idempotent-Replayed'],
   });
 
-  // /api/v1 para el contrato REST; /graphql, /health y /warmup quedan en la raíz.
-  app.setGlobalPrefix('api/v1', { exclude: ['graphql', 'health', 'health/deep', 'warmup'] });
+  // /api/v1 (contrato original) y /api/v2 (contrato del agregador) cuelgan de /api; /graphql, /health y /warmup quedan en la raíz.
+  app.setGlobalPrefix('api', { exclude: ['graphql', 'health', 'health/deep', 'warmup'] });
 
   // Correlation ID: se acepta el que envía el cliente o se genera uno; viaja a los microservicios (metadata
   // gRPC) y a los eventos, y se devuelve en la respuesta. Además se registra cada petición en JSON.
@@ -41,7 +44,7 @@ async function bootstrap() {
   const config = new DocumentBuilder()
     .setTitle('GDS Autos Core API')
     .setDescription(
-      'API Gateway del dominio Autos del Booking Prototipo. Fachada REST (contrato autos-openapi.yaml) sobre los microservicios ' +
+      'API Gateway del dominio Autos del Booking Prototipo. Fachada REST (contrato v1 en /api/v1; contrato oficial v2 en /api/v2, documentado en /api/docs-v2) sobre los microservicios ' +
         'Catálogo, Reservas, Pagos e Identidad (gRPC). También publica GraphQL federado en /graphql. ' +
         (enforceAdmin() ? 'Las rutas /admin exigen un JWT de ADMIN (POST /admin/auth/login).' : ''),
     )
@@ -67,6 +70,16 @@ async function bootstrap() {
     };
   }
   SwaggerModule.setup('api/docs', app, document, { swaggerOptions: { persistAuthorization: true } });
+
+  // Contrato v2 del agregador: se publica el archivo tal cual (única fuente de verdad), sin regenerarlo desde el código.
+  const v2File = join(protoDir(), '..', 'autos-openapi-v2.yaml');
+  if (existsSync(v2File)) {
+    SwaggerModule.setup('api/docs-v2', app, loadYaml(readFileSync(v2File, 'utf8')) as any, {
+      customSiteTitle: 'Autos API v2 · contrato oficial',
+      yamlDocumentUrl: 'api/docs-v2/openapi.yaml',
+      swaggerOptions: { persistAuthorization: true },
+    });
+  }
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port, '0.0.0.0');

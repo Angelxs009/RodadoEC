@@ -59,6 +59,62 @@ export class BookingController {
     return this.booking.listOrders(req);
   }
 
+  // ── Contrato v2 ────────────────────────────────────────────────────────
+  @GrpcMethod(S, 'CreateOrderV2')
+  createOrderV2(req: any) {
+    return this.booking.createOrderV2(req);
+  }
+
+  @GrpcMethod(S, 'CancelOrderV2')
+  cancelOrderV2(req: any) {
+    return this.booking.cancelOrderV2(req);
+  }
+
+  @GrpcMethod(S, 'CheckinDigital')
+  checkinDigital(req: any) {
+    return this.booking.checkinDigital(req);
+  }
+
+  @GrpcMethod(S, 'DeliverOrder')
+  deliverOrder(req: any) {
+    return this.booking.deliverOrder(req);
+  }
+
+  @GrpcMethod(S, 'ReturnOrder')
+  returnOrder(req: any) {
+    return this.booking.returnOrder(req);
+  }
+
+  @GrpcMethod(S, 'ReturnVehicle')
+  returnVehicle(req: any) {
+    return this.booking.returnVehicle(req);
+  }
+
+  @GrpcMethod(S, 'RegisterMaintenance')
+  registerMaintenance(req: any) {
+    return this.booking.registerMaintenance(req);
+  }
+
+  @GrpcMethod(S, 'ListEvents')
+  listEvents(req: any) {
+    return this.webhooks.listEvents(req);
+  }
+
+  @GrpcMethod(S, 'GetPromoContract')
+  getPromoContract() {
+    return this.booking.getPromoContract();
+  }
+
+  @GrpcMethod(S, 'SetPromoContract')
+  setPromoContract(req: any) {
+    return this.booking.setPromoContract(req);
+  }
+
+  @GrpcMethod(S, 'SyncInventory')
+  syncInventory() {
+    return this.booking.syncInventory();
+  }
+
   @GrpcMethod(S, 'ListWebhooks')
   listWebhooks() {
     return this.webhooks.list();

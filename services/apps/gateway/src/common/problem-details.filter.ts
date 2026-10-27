@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
+import { CORRELATION_HEADER, currentCorrelationId } from '@autos/common';
 
 /**
  * Traduce cualquier error al formato ProblemDetails (application/problem+json) del contrato.
@@ -11,20 +12,32 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     if (host.getType() !== 'http') throw exception;
-    const response = host.switchToHttp().getResponse<Response>();
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
+    const isV2 = request.originalUrl?.startsWith('/api/v2');
+    // Todo ProblemDetails lleva instance, correlation_id y timestamp (trazabilidad, contrato v2 y RFC 7807).
+    const enrich = (p: Record<string, unknown>) => ({
+      ...p,
+      instance: p.instance ?? request.originalUrl?.split('?')[0],
+      correlation_id: p.correlation_id ?? currentCorrelationId() ?? response.getHeader(CORRELATION_HEADER),
+      timestamp: p.timestamp ?? new Date().toISOString(),
+    });
 
     if (!(exception instanceof HttpException)) {
       this.logger.error((exception as Error)?.stack ?? String(exception));
       response
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
         .header('Content-Type', 'application/problem+json')
-        .send({
-          type: 'https://api.booking-hub.com/errors/internal',
-          title: 'Error interno',
-          status: 500,
-          detail: 'Ocurrió un error inesperado.',
-          code: 'INTERNAL',
-        });
+        .send(
+          enrich({
+            type: 'https://api.booking-hub.com/errors/internal',
+            title: 'Error interno',
+            status: 500,
+            detail: 'Ocurrió un error inesperado.',
+            code: 'INTERNAL',
+          }),
+        );
       return;
     }
 
@@ -32,7 +45,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
     const body = exception.getResponse();
 
     if (typeof body === 'object' && body !== null && 'code' in body) {
-      response.status(status).header('Content-Type', 'application/problem+json').send(body);
+      response.status(status).header('Content-Type', 'application/problem+json').send(enrich(body as Record<string, unknown>));
       return;
     }
 
@@ -49,7 +62,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
           status,
           detail: 'Uno o más campos no cumplen con el contrato.',
           code: 'VALIDATION_FAILED',
-          invalidParams: (body as { message: string[] }).message.map((msg) => ({ name: msg.split(' ')[0], reason: msg })),
+          [isV2 ? 'invalid_params' : 'invalidParams']: (body as { message: string[] }).message.map((msg) => ({ name: msg.split(' ')[0], reason: msg })),
         }
       : {
           type: `https://api.booking-hub.com/errors/${status}`,
@@ -61,6 +74,6 @@ export class ProblemDetailsFilter implements ExceptionFilter {
           code: status === 401 ? 'UNAUTHORIZED' : status === 404 ? 'NOT_FOUND' : status === 409 ? 'CONFLICT' : 'VALIDATION_FAILED',
         };
 
-    response.status(status).header('Content-Type', 'application/problem+json').send(problem);
+    response.status(status).header('Content-Type', 'application/problem+json').send(enrich(problem));
   }
 }

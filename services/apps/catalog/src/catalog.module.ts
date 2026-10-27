@@ -3,12 +3,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { databaseModule, healthModuleFor } from '@autos/common';
 import { CatalogController } from './catalog.controller';
 import { CatalogService } from './catalog.service';
-import { Depot, Supplier, Vehicle } from './entities/catalog.entities';
+import { Depot, MaintenanceLog, Supplier, Vehicle } from './entities/catalog.entities';
 
 @Module({
   imports: [
-    databaseModule('catalog', [Vehicle, Depot, Supplier]),
-    TypeOrmModule.forFeature([Vehicle, Depot, Supplier]),
+    databaseModule('catalog', [Vehicle, Depot, Supplier, MaintenanceLog]),
+    TypeOrmModule.forFeature([Vehicle, Depot, Supplier, MaintenanceLog]),
     healthModuleFor('catalog-service'),
   ],
   controllers: [CatalogController],

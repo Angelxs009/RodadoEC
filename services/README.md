@@ -31,7 +31,7 @@ El monolito original sigue en [`../backend`](../backend) hasta validar este sist
 | Booking consume APIs/eventos | REST `/api/v1` + GraphQL `/graphql` (subgrafo federado) + webhooks firmados con HMAC y reintentos |
 | API Gateway funcional | `apps/gateway`: enruta a los servicios, valida JWT, aplica idempotencia, traduce errores |
 | Contratos documentados y versionados | [`../contracts`](../contracts): OpenAPI/AsyncAPI 1.1.0, 5 `.proto` v1, GraphQL 1.0.0, `CHANGELOG.md`, `check-compat.js` |
-| Pruebas de integración | `test/gateway.integration.ts` (17 pruebas end-to-end contra el gateway real) |
+| Pruebas de integración | `test/gateway.integration.ts` (17 pruebas v1) y `test/v2-contract.integration.ts` (26 pruebas de conformidad con el contrato v2) |
 | Seguridad básica | JWT HS256 con secretos separados admin/cliente, guard por rol, tarjetas validadas (Luhn), CORS por lista, HMAC en webhooks |
 | Desplegado en Internet | `../render.microservicios.yaml` (Render) + frontend en Vercel |
 
@@ -48,6 +48,34 @@ El monolito original sigue en [`../backend`](../backend) hasta validar este sist
 Cada petición lleva un `X-Correlation-Id` (se genera si el cliente no lo manda): viaja en metadata gRPC, aparece en
 todos los logs JSON de todos los servicios y en los eventos de webhook (`correlationId`). `GET /warmup` consulta a los
 cuatro servicios y reporta cuál está arriba.
+
+## Contrato oficial v2 del agregador (`/api/v2`)
+
+El archivo [`contracts/autos-openapi-v2.yaml`](../contracts/autos-openapi-v2.yaml) (versión 2.0.0, entregado por el agregador Booking) se
+implementa **completo**: las 19 operaciones bajo `/api/v2/autos/*`. La v1 sigue viva en `/api/v1`. Swagger del contrato: `/api/docs-v2`.
+
+| Requisito del contrato | Dónde vive |
+|---|---|
+| Búsqueda con franjas de 30 min, filtros, recargo <25 / >70 años y 422 para menores de 18 | Gateway `v2/autos-v2.controller.ts` + `libs/common/pricing.ts` |
+| Máquina de 6 estados y cooldown de 2 h tras la devolución (el auto sale de las búsquedas, 409 `VEHICLE_IN_CLEANING_COOLDOWN`) | Catálogo (`TransitionVehicle`, expiración al consultar) + Reservas |
+| Check-in digital → entrega (odómetro de salida) → devolución (odómetro de retorno, km recorridos) | Reservas (`CheckinDigital`, `DeliverOrder`, `ReturnOrder`) |
+| Mantenimiento preventivo con RBAC y bitácora; alerta si `km >= próximo mantenimiento` | Catálogo (`RecordMaintenance`) + guard `V2AccessGuard` |
+| Cancelación compensatoria (Saga) con reembolso del 100% y auto de nuevo `DISPONIBLE` | Reservas (`CancelOrderV2`) → Catálogo + Pagos |
+| `Idempotency-Key` en toda mutación y `X-Correlation-Id` | Gateway (`IdempotencyKeyGuard` / `IdempotencyInterceptor`) |
+| Tolerancia de 5 s, Circuit Breaker y respaldo con el último catálogo válido | `GrpcCaller` (`GRPC_TIMEOUT_MS`) y cabecera `X-Data-Source: fallback-cache` |
+| Acuerdo B2B de promociones (§9) | Reservas (`GetPromoContract` / `SetPromoContract`) |
+| Feed Outbox de CloudEvents (`/autos/eventos`) | Reservas (tabla `outbox_events`) |
+| Stock hacia Booking por gRPC (`inventory.InventoryStockService`, §2.1) | Reservas (`inventory.client.ts`; `INVENTORY_GRPC_URL`) |
+
+**Cómo se comprueba que se cumple:** `test/v2-contract.integration.ts` valida **cada respuesta real** contra el esquema del propio YAML
+(Ajv) y falla si una operación devuelve un código que el contrato no declara; además exige que se hayan ejercitado las 19 operaciones.
+Para probar el empuje de stock sin Booking: `node test/mock-inventory-server.js` e `INVENTORY_GRPC_URL=127.0.0.1:50999` en Reservas.
+
+Decisiones donde el contrato es ambiguo o no alcanza:
+- La reserva v2 no lleva tarjeta (la paga el agregador): Reservas liquida por un canal **B2B simulado** en Pagos, de modo que toda orden queda respaldada por un pago.
+- Se devuelve `400` por validación también donde el contrato no lo declara (listado, eventos, mantenimiento); las pruebas lo señalan.
+- Un auto que supera el umbral de kilometraje pasa a `EN_MANTENIMIENTO` hasta que el técnico registre `mantenimiento_realizado`.
+- Las fechas pasadas en búsqueda o reserva se rechazan con 400, como muestra el ejemplo de `ProblemDetails` del contrato.
 
 ## Contratos
 
@@ -92,6 +120,10 @@ GATEWAY_URL=http://localhost:3000 npm run test:integration
 | `GRPC_ON_PORT=true` | servicios | gRPC escucha en `$PORT` y no se abre HTTP (Render: un solo puerto) |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | identity | Credenciales del administrador |
 | `ADMIN_JWT_SECRET`, `CUSTOMER_JWT_SECRET` | gateway **e** identity (iguales) | Firma/verificación de JWT |
+| `AUTH_ENFORCE_V2`, `BOOKING_API_KEY` | gateway | `true` exige JWT o `X-API-Key` en las rutas protegidas del contrato v2; `BOOKING_API_KEY` es la clave M2M |
+| `INVENTORY_GRPC_URL`, `INVENTORY_GRPC_TLS`, `INVENTORY_SYNC_ON_START` | booking | Servicio de stock de Booking Prototipo (vacío = desactivado) |
+| `GRPC_TIMEOUT_MS` | quien llama | Tolerancia por llamada gRPC (5000 por defecto; 60000 en Render por los arranques en frío) |
+| `NODE_ID`, `NODE_NAME`, `PUBLIC_ASSETS_URL` | gateway / booking | Identidad del nodo en `/autos/health` y origen de las fotos |
 | `AUTH_ENFORCE_ADMIN`, `AUTH_ENFORCE_CUSTOMER` | gateway | `true` exige JWT de ese rol en `/admin/**` y `/auth/me`, `/me/**` |
 | `CORS_ORIGINS` | gateway | Orígenes permitidos separados por coma |
 

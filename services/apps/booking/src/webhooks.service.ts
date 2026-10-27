@@ -3,10 +3,51 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { createHmac, randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { currentCorrelationId, notFound } from '@autos/common';
-import { WebhookDelivery, WebhookEvent, WebhookSubscription } from './entities/booking.entities';
+import { MoreThan } from 'typeorm';
+import { OutboxEvent, WebhookDelivery, WebhookEvent, WebhookSubscription } from './entities/booking.entities';
 
 const RETRY_DELAYS_MS = [0, 1000, 3000]; // 3 intentos con espera creciente
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Eventos de dominio expuestos como CloudEvents v1.0 (feed Outbox GET /autos/eventos → RabbitMQ / Kafka). */
+const CLOUD_SOURCE = '/microservices/ms-autos';
+const CLOUD_EVENTS: Partial<Record<WebhookEvent, { type: string; prefix: string; build: (d: any) => Record<string, unknown> }>> = {
+  [WebhookEvent.CAR_ORDER_CONFIRMED]: {
+    type: 'ec.edu.epn.booking.autos.order.confirmed',
+    prefix: 'ord',
+    build: (d) => ({ order_id: d.pnr, pnr: d.pnr, auto_id: d.vehicle_id, total_price: d.total_price, nuevo_estado_auto: 'RESERVADO' }),
+  },
+  [WebhookEvent.CAR_ORDER_CANCELLED]: {
+    type: 'ec.edu.epn.booking.autos.order.cancelled',
+    prefix: 'canc',
+    build: (d) => ({
+      order_id: d.pnr, pnr: d.pnr, auto_id: d.vehicle_id, refund_id: d.refund_id, refund_amount: d.refund_amount, estado_restituido: 'DISPONIBLE',
+    }),
+  },
+  [WebhookEvent.CAR_COOLDOWN_STARTED]: {
+    type: 'ec.edu.epn.booking.autos.cooldown.started',
+    prefix: 'cool',
+    build: (d) => ({ auto_id: d.vehicle_id, estado: 'EN_LIMPIEZA', cooldown_minutos: d.cooldown_minutes, disponible_desde: d.available_from }),
+  },
+  [WebhookEvent.CAR_MAINTENANCE_ALERT]: {
+    type: 'ec.edu.epn.booking.autos.mantenimiento.alerta',
+    prefix: 'mant',
+    build: (d) => ({ auto_id: d.vehicle_id, kilometraje_actual: d.odometer_km, proximo_mantenimiento_km: d.next_maintenance_km, severidad: 'WARNING' }),
+  },
+};
+
+export function toCloudEvent(o: OutboxEvent) {
+  return {
+    specversion: '1.0',
+    type: o.type,
+    source: CLOUD_SOURCE,
+    id: o.event_id,
+    time: o.time.toISOString(),
+    correlation_id: o.correlation_id ?? '',
+    datacontenttype: 'application/json',
+    data_json: JSON.stringify(o.data),
+  };
+}
 
 export function toWebhookMsg(w: WebhookSubscription) {
   return { id: w.id, url: w.url, events: w.events, secret: w.secret ?? '' };
@@ -24,6 +65,7 @@ export class WebhooksService {
   constructor(
     @InjectRepository(WebhookSubscription) private readonly subscriptions: Repository<WebhookSubscription>,
     @InjectRepository(WebhookDelivery) private readonly deliveries: Repository<WebhookDelivery>,
+    @InjectRepository(OutboxEvent) private readonly outbox: Repository<OutboxEvent>,
   ) {}
 
   async list() {
@@ -60,9 +102,41 @@ export class WebhooksService {
     };
   }
 
-  /** Dispara el evento en segundo plano (no espera la entrega). */
-  emit(eventType: WebhookEvent, resourceId: string, data: Record<string, unknown>): void {
+  /** Feed Transactional Outbox: eventos en orden de emisión; `after` es el id del último evento ya consumido. */
+  async listEvents(req: { limit?: number; after?: string }) {
+    const limit = Math.min(Math.max(req.limit || 10, 1), 100);
+    let afterSeq = 0;
+    if (req.after) {
+      const marker = await this.outbox.findOneBy({ event_id: req.after });
+      if (marker) afterSeq = marker.seq;
+    }
+    const [found, total] = await this.outbox.findAndCount({
+      where: { seq: MoreThan(afterSeq) },
+      order: { seq: 'ASC' },
+      take: limit,
+    });
+    return { events: found.map(toCloudEvent), total, timestamp: new Date().toISOString() };
+  }
+
+  /**
+   * Publica un evento de dominio: lo asienta en el outbox (esperado, para no perderlo) y lo despacha a los
+   * webhooks suscritos en segundo plano (no espera la entrega ni hace fallar la operación que lo disparó).
+   */
+  async emit(eventType: WebhookEvent, resourceId: string, data: Record<string, unknown>): Promise<void> {
     const correlationId = currentCorrelationId();
+    const cloud = CLOUD_EVENTS[eventType];
+    if (cloud) {
+      await this.outbox
+        .save(
+          this.outbox.create({
+            event_id: `evt-car-${cloud.prefix}-${randomUUID().slice(0, 6)}`,
+            type: cloud.type,
+            correlation_id: correlationId ?? null,
+            data: cloud.build(data),
+          }),
+        )
+        .catch((err) => this.logger.warn(`No se pudo asentar ${eventType} en el outbox: ${(err as Error).message}`));
+    }
     this.dispatch(eventType, resourceId, data, correlationId).catch((err) =>
       this.logger.warn(`No se pudo despachar ${eventType}: ${(err as Error).message}`),
     );

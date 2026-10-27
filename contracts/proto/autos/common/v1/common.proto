@@ -50,8 +50,11 @@ message Vehicle {
   int32 supplier_id = 11;
   int32 depot_id = 12;
   string image_url = 13;
-  string status = 14;       // AVAILABLE | RESERVED
+  string status = 14;       // AVAILABLE | RESERVED | READY_FOR_DELIVERY | DELIVERED | CLEANING | MAINTENANCE
   int32 min_driver_age = 15; // siempre resuelto (por defecto 18)
+  int32 odometer_km = 16;          // kilometraje actual
+  int32 next_maintenance_km = 17;  // umbral de mantenimiento preventivo
+  string available_from = 18;      // ISO-8601; fin del cooldown de limpieza (vacío si no aplica)
 }
 
 message Depot {

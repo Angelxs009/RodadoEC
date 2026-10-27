@@ -79,3 +79,63 @@ export class AuthGuard implements CanActivate {
     return true;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Contrato REST v2: seguridad BearerAuth (JWT) o ApiKeyAuth (X-API-Key), roles CLIENTE | ADMIN | MANTENIMIENTO
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type V2Role = 'CLIENTE' | 'ADMIN' | 'MANTENIMIENTO';
+export const V2_ROLES_KEY = 'v2roles';
+
+/** Restringe una ruta v2 a ciertos roles (RBAC RDA2 §5). Sin argumentos solo exige autenticación. */
+export const V2Roles = (...roles: V2Role[]) => SetMetadata(V2_ROLES_KEY, roles);
+
+export const enforceV2 = () => flag('AUTH_ENFORCE_V2');
+
+/**
+ * Guard de las rutas protegidas del contrato v2.
+ *  · Autenticación: JWT válido (Authorization: Bearer) o clave M2M (X-API-Key = BOOKING_API_KEY).
+ *  · Rol: el del JWT (ADMIN→ADMIN, CUSTOMER→CLIENTE) o, con clave M2M, el de la cabecera X-Role.
+ * Con AUTH_ENFORCE_V2=true exige 401 sin credenciales y 403 con rol insuficiente. Con la bandera apagada
+ * (por defecto, para probar en Swagger sin tokens) solo rechaza 403 si se envía explícitamente un X-Role
+ * que no corresponde a la ruta.
+ */
+@Injectable()
+export class V2AccessGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    if (context.getType<string>() !== 'http') return true;
+    const req = context.switchToHttp().getRequest();
+    const roles = this.reflector.getAllAndOverride<V2Role[] | undefined>(V2_ROLES_KEY, [context.getHandler(), context.getClass()]) ?? [];
+
+    const expectedKey = process.env.BOOKING_API_KEY;
+    const apiKeyOk = !!expectedKey && req.headers['x-api-key'] === expectedKey;
+    const principal: Principal | null | undefined = req.principal;
+    const authenticated = apiKeyOk || !!principal;
+
+    const headerRole = String(req.headers['x-role'] ?? '').toUpperCase() as V2Role | '';
+    const role: V2Role | '' =
+      apiKeyOk && headerRole ? headerRole : principal ? (principal.role === 'ADMIN' ? 'ADMIN' : 'CLIENTE') : headerRole;
+
+    const forbidden = () =>
+      new HttpException(
+        {
+          type: 'https://booking.epn.edu.ec/errors/forbidden',
+          title: 'Acceso restringido por rol',
+          status: HttpStatus.FORBIDDEN,
+          detail: `Esta operación requiere el rol ${roles.join(' o ')}${role ? `; el rol recibido es ${role}` : ''}.`,
+          code: 'FORBIDDEN',
+        },
+        HttpStatus.FORBIDDEN,
+      );
+
+    if (!enforceV2()) {
+      if (roles.length && headerRole && !roles.includes(headerRole)) throw forbidden();
+      return true;
+    }
+    if (!authenticated) throw unauthorized('Falta un JWT válido (Authorization: Bearer) o una clave de API (X-API-Key).');
+    if (roles.length && !roles.includes(role as V2Role)) throw forbidden();
+    return true;
+  }
+}

@@ -132,3 +132,60 @@ export const unauthorized = (detail: string) =>
     detail,
     'https://api.booking-hub.com/errors/unauthorized',
   );
+
+// ── Errores del contrato REST v2 (RFC 7807 con invalid_params) ─────────────
+const V2_ERRORS = 'https://booking.epn.edu.ec/errors';
+
+export interface InvalidParam {
+  name: string;
+  reason: string;
+}
+
+/** 400 con la lista de campos que no pasaron la validación (invalid_params). */
+export function invalidParams(detail: string, params: InvalidParam[]): HttpException {
+  return new HttpException(
+    {
+      type: `${V2_ERRORS}/validation-failed`,
+      title: 'Petición inválida',
+      status: HttpStatus.BAD_REQUEST,
+      detail,
+      code: ProblemCode.VALIDATION_FAILED,
+      invalid_params: params,
+    },
+    HttpStatus.BAD_REQUEST,
+  );
+}
+
+export const unprocessable = (code: string, title: string, detail: string) =>
+  problem(HttpStatus.UNPROCESSABLE_ENTITY, code, title, detail, `${V2_ERRORS}/${code.toLowerCase().replace(/_/g, '-')}`);
+
+export const driverUnderage = (age: number) =>
+  unprocessable('DRIVER_UNDERAGE', 'Conductor menor de edad', `El conductor tiene ${age} años: la renta de vehículos exige ser mayor de 18 años.`);
+
+export const driverBelowVehicleMinimum = (vehicleId: string, minAge: number, age: number) =>
+  unprocessable(
+    'DRIVER_AGE_RESTRICTION',
+    'Edad del conductor no permitida',
+    `El vehículo "${vehicleId}" exige un conductor de al menos ${minAge} años; el conductor indicado tiene ${age}.`,
+  );
+
+export const vehicleInCleaningCooldown = (vehicleId: string, availableFromIso: string) =>
+  problem(
+    HttpStatus.CONFLICT,
+    'VEHICLE_IN_CLEANING_COOLDOWN',
+    'Vehículo en Cooldown de Limpieza Obligatorio (2 Horas)',
+    `El vehículo ${vehicleId} se encuentra en fase de limpieza y desinfección obligatoria de 120 minutos tras su retorno. Estará disponible nuevamente a las ${availableFromIso}.`,
+    `${V2_ERRORS}/cooldown-activo`,
+  );
+
+export const vehicleInMaintenance = (vehicleId: string) =>
+  problem(
+    HttpStatus.CONFLICT,
+    'VEHICLE_IN_MAINTENANCE',
+    'Vehículo en mantenimiento',
+    `El vehículo ${vehicleId} está en mantenimiento preventivo y no se puede reservar hasta que el técnico lo habilite.`,
+    `${V2_ERRORS}/vehicle-in-maintenance`,
+  );
+
+export const invalidStateTransition = (detail: string) =>
+  problem(HttpStatus.CONFLICT, 'INVALID_STATE_TRANSITION', 'Transición de estado no permitida', detail, `${V2_ERRORS}/invalid-state-transition`);

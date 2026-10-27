@@ -5,12 +5,13 @@ import { GraphQLModule } from '@nestjs/graphql';
 import { join } from 'path';
 import { protoDir } from '@autos/common';
 import { BackendsModule } from './backends';
-import { AuthGuard } from './common/auth';
+import { AuthGuard, V2AccessGuard } from './common/auth';
 import { GRAPHQL_PROVIDERS } from './graphql/autos.resolvers';
 import { AccountsController } from './rest/accounts.controller';
 import { AdminController } from './rest/admin.controller';
 import { AutosController } from './rest/autos.controller';
 import { HealthController } from './rest/health.controller';
+import { AutosV2Controller } from './v2/autos-v2.controller';
 
 /** Subgrafo federado: el esquema es el contrato versionado de contracts/graphql/autos.graphql (schema-first). */
 const graphqlSchema = join(protoDir(), '..', 'graphql', 'autos.graphql').replace(/\\/g, '/');
@@ -25,7 +26,7 @@ const graphqlSchema = join(protoDir(), '..', 'graphql', 'autos.graphql').replace
       introspection: true,
     }),
   ],
-  controllers: [AutosController, AccountsController, AdminController, HealthController],
-  providers: [{ provide: APP_GUARD, useClass: AuthGuard }, ...GRAPHQL_PROVIDERS],
+  controllers: [AutosController, AccountsController, AdminController, HealthController, AutosV2Controller],
+  providers: [{ provide: APP_GUARD, useClass: AuthGuard }, V2AccessGuard, ...GRAPHQL_PROVIDERS],
 })
 export class GatewayModule {}

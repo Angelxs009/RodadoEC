@@ -9,7 +9,7 @@ import { LoginCustomerDto } from '../dto/customers/login.dto';
 import { RegisterCustomerDto } from '../dto/customers/register.dto';
 
 /** Cuenta de cliente y login de administrador: fachada sobre el microservicio de Identidad. */
-@Controller()
+@Controller('v1')
 export class AccountsController {
   constructor(private readonly backends: Backends) {}
 
