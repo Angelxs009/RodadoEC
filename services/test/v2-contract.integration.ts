@@ -45,16 +45,27 @@ const nextCar = () => {
 
 let adminUuids: Record<string, string> = {};
 
+/** Con AUTH_ENFORCE_ADMIN=true el panel exige JWT: se inicia sesión con ADMIN_USERNAME / ADMIN_PASSWORD. */
+async function adminHeaders(): Promise<Record<string, string>> {
+  const r = await api('POST', '/admin/auth/login', {
+    username: process.env.ADMIN_USERNAME ?? 'admin',
+    password: process.env.ADMIN_PASSWORD ?? 'rodadoec2026',
+  });
+  const token = r.body?.token ?? r.body?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 beforeAll(async () => {
   const list = await v2('GET', '/autos', {}, { query: { limit: 500 } });
   freeCars = list.body.data.filter((c: any) => c.estado === 'DISPONIBLE').map((c: any) => c.vehicle_id);
-  const admin = await api('GET', '/admin/vehicles');
-  adminUuids = Object.fromEntries((admin.body as any[]).map((v) => [v.vehicle_id, v.id]));
+  const admin = await api('GET', '/admin/vehicles', undefined, await adminHeaders());
+  adminUuids = Array.isArray(admin.body) ? Object.fromEntries(admin.body.map((v: any) => [v.vehicle_id, v.id])) : {};
 });
 
 afterAll(async () => {
   // Deja la flota como estaba: los autos usados vuelven a DISPONIBLE (sin esperar las 2 h de cooldown).
-  for (const id of usedVehicles) if (adminUuids[id]) await api('POST', `/admin/vehicles/${adminUuids[id]}/release`);
+  const headers = await adminHeaders();
+  for (const id of usedVehicles) if (adminUuids[id]) await api('POST', `/admin/vehicles/${adminUuids[id]}/release`, undefined, headers);
 });
 
 describe('Telemetría y salud', () => {
@@ -78,6 +89,13 @@ describe('Catálogo y búsqueda', () => {
       expect(c.transmision).toBe('AUTOMATICO');
       expect(c.estado).toBe('DISPONIBLE');
     }
+  });
+
+  it('GET /autos sin parámetros devuelve todo el catálogo disponible (lo que importa el botón de Booking)', async () => {
+    const r = await v2('GET', '/autos');
+    expect(r.status).toBe(200);
+    expect(r.body.total).toBeGreaterThan(10);
+    expect(r.body.data.length).toBe(Math.min(r.body.total, 100));
   });
 
   it('GET /autos con filtro inválido responde 400 con invalid_params', async () => {

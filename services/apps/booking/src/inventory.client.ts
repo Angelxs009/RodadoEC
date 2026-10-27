@@ -7,6 +7,10 @@ import { protoDir } from '@autos/common';
 
 const TZ = 'America/Guayaquil';
 
+let lastTimestamp = 0;
+/** Epoch en ms estrictamente creciente: dos avisos en el mismo milisegundo no deben empatar. */
+const nextTimestamp = () => (lastTimestamp = Math.max(Date.now(), lastTimestamp + 1));
+
 /** slot_id estándar del contrato: "slot-YYYYMMDD-HHMM" (p. ej. slot-20261025-1030). */
 export const slotIdOf = (date: string, slot: string) => `slot-${date.replace(/-/g, '')}-${slot.replace(':', '')}`;
 const DEADLINE_MS = 5000;
@@ -70,7 +74,7 @@ export class InventoryClient {
       date,
       time_slot: timeSlot,
       available_units: available ? 1 : 0,
-      timestamp: String(Date.now()),
+      timestamp: String(nextTimestamp()),
       slot_id: slotIdOf(date, timeSlot),
     };
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -110,7 +114,7 @@ export class InventoryClient {
           date,
           time_slot: slot,
           delta: it.available ? 1 : -1,
-          timestamp: String(Date.now()),
+          timestamp: String(nextTimestamp()),
           slot_id: slotIdOf(date, slot),
         });
       }

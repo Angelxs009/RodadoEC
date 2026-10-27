@@ -174,7 +174,8 @@ export class AutosV2Controller {
   // ══ Catálogo y búsqueda ════════════════════════════════════════════════════
   @Get()
   async list(@Res({ passthrough: true }) res: any, @Query('category') category = 'ALL', @Query('transmission') transmission = 'ALL', @Query('limit') limitRaw?: string) {
-    const limit = limitRaw === undefined ? 10 : Number(limitRaw);
+    // Sin `limit` se devuelve el catálogo disponible completo (hasta 100): Booking importa el catálogo llamando a GET /autos sin parámetros.
+    const limit = limitRaw === undefined ? 100 : Number(limitRaw);
     const bad: InvalidParam[] = [];
     if (category !== 'ALL' && !(CATEGORIES as readonly string[]).includes(category)) bad.push({ name: 'category', reason: `Valores admitidos: ALL, ${CATEGORIES.join(', ')}.` });
     if (transmission !== 'ALL' && !(TRANSMISSIONS as readonly string[]).includes(transmission)) bad.push({ name: 'transmission', reason: 'Valores admitidos: ALL, MANUAL, AUTOMATICO.' });
