@@ -42,8 +42,41 @@ export class InventoryClient {
   private readonly logger = new Logger(InventoryClient.name);
   private client: any;
 
+  /** Hay algún canal configurado: gRPC (INVENTORY_GRPC_URL) y/o el respaldo REST (INVENTORY_REST_URL). */
   get enabled(): boolean {
+    return !!process.env.INVENTORY_GRPC_URL || !!process.env.INVENTORY_REST_URL;
+  }
+
+  private get grpcEnabled(): boolean {
     return !!process.env.INVENTORY_GRPC_URL;
+  }
+
+  /**
+   * Respaldo REST del stock (Guía §3: "fallback REST POST /api/v3/inventory/stock"). Se usa cuando gRPC falla o no hay ruta gRPC
+   * (p. ej. desde Render, cuyo proxy no soporta HTTP/2). SUPOSICIÓN: el cuerpo JSON lleva los mismos 7 campos de StockUpdateMessage;
+   * la guía no publica su esquema. Si Booking espera otro, el POST falla y solo queda un aviso en el log (nunca afecta la reserva).
+   */
+  private async pushRest(msg: Record<string, unknown>): Promise<boolean> {
+    const url = process.env.INVENTORY_REST_URL;
+    if (!url) return false;
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (process.env.INVENTORY_REST_API_KEY) headers['X-API-Key'] = process.env.INVENTORY_REST_API_KEY;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ...msg, timestamp: Number(msg.timestamp) }),
+        signal: AbortSignal.timeout(DEADLINE_MS),
+      });
+      if (!res.ok) {
+        this.logger.warn(`Respaldo REST del stock de ${msg.item_id}: Booking respondió HTTP ${res.status}`);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      this.logger.warn(`Respaldo REST del stock de ${msg.item_id} falló: ${(err as Error).message}`);
+      return false;
+    }
   }
 
   private get nodeId(): string {
@@ -77,6 +110,10 @@ export class InventoryClient {
       timestamp: String(nextTimestamp()),
       slot_id: slotIdOf(date, timeSlot),
     };
+    if (!this.grpcEnabled) {
+      await this.pushRest(msg);
+      return;
+    }
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const ack: any = await new Promise((resolve, reject) =>
@@ -89,7 +126,10 @@ export class InventoryClient {
         this.logger.warn(`Booking rechazó el stock de ${itemId} (${ack?.error_code || 'sin código'}): ${ack?.message}`);
         return;
       } catch (err) {
-        if (attempt === 2) this.logger.warn(`No se pudo sincronizar el stock de ${itemId} con Booking: ${(err as Error).message}`);
+        if (attempt === 2) {
+          this.logger.warn(`No se pudo sincronizar el stock de ${itemId} con Booking por gRPC: ${(err as Error).message}`);
+          await this.pushRest(msg); // respaldo REST (si está configurado)
+        }
       }
     }
   }
@@ -98,6 +138,22 @@ export class InventoryClient {
   async streamFleet(items: { itemId: string; available: boolean }[]): Promise<{ total: number; synchronized: boolean } | null> {
     if (!this.enabled) return null;
     const { date, slot } = localDateSlot(new Date());
+    if (!this.grpcEnabled) {
+      let ok = 0;
+      for (const it of items) {
+        const sent = await this.pushRest({
+          service_id: this.nodeId,
+          item_id: it.itemId,
+          date,
+          time_slot: slot,
+          available_units: it.available ? 1 : 0,
+          timestamp: String(nextTimestamp()),
+          slot_id: slotIdOf(date, slot),
+        });
+        if (sent) ok++;
+      }
+      return { total: ok, synchronized: ok === items.length };
+    }
     return new Promise((resolve) => {
       const stream = this.getClient().StreamInventoryChanges({ deadline: Date.now() + 30000 }, (err: Error | null, summary: any) => {
         if (err) {

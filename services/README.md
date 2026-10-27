@@ -132,7 +132,8 @@ GATEWAY_URL=http://localhost:3000 npm run test:integration
 | `ADMIN_JWT_SECRET`, `CUSTOMER_JWT_SECRET` | gateway **e** identity (iguales) | Firma/verificación de JWT |
 | `AUTH_ENFORCE_V2`, `BOOKING_API_KEY` | gateway | `true` exige JWT o `X-API-Key` en las rutas protegidas del contrato v2; `BOOKING_API_KEY` es la clave M2M |
 | `RABBITMQ_URL`, `KAFKA_BROKERS`, `RABBITMQ_EXCHANGE`, `KAFKA_TOPIC` | booking | Brokers del agregador (vacío = desactivado; exchange `booking.events` y topic `topic-ordenes-b2b` por defecto) |
-| `INVENTORY_GRPC_URL`, `INVENTORY_GRPC_TLS`, `INVENTORY_SYNC_ON_START` | booking | Servicio de stock de Booking Prototipo (vacío = desactivado) |
+| `INVENTORY_GRPC_URL`, `INVENTORY_GRPC_TLS`, `INVENTORY_SYNC_ON_START` | booking | Servicio de stock de Booking Prototipo por gRPC (vacío = desactivado) |
+| `INVENTORY_REST_URL`, `INVENTORY_REST_API_KEY` | booking | **Respaldo REST del stock** (p. ej. `https://rda1-backend-integracion-sistemas.onrender.com/api/v3/inventory/stock`): se usa si gRPC falla o si no hay `INVENTORY_GRPC_URL` (desde Render no se llega a gRPC). Apagado por defecto |
 | `GRPC_TIMEOUT_MS` | quien llama | Tolerancia por llamada gRPC (5000 por defecto; 60000 en Render por los arranques en frío) |
 | `NODE_ID`, `NODE_NAME`, `PUBLIC_ASSETS_URL` | gateway / booking | Identidad del nodo en `/autos/health` y origen de las fotos |
 | `AUTH_ENFORCE_ADMIN`, `AUTH_ENFORCE_CUSTOMER` | gateway | `true` exige JWT de ese rol en `/admin/**` y `/auth/me`, `/me/**` |
@@ -175,7 +176,13 @@ catálogo importa `GET /autos` (devuelve el catálogo disponible completo). Book
 (`/autos/*`, `POST /reservas`) como `baseUrlRest`. Guía completa: [`../docs/GUIA_INTEGRACION_AUTOS.md`](../docs/GUIA_INTEGRACION_AUTOS.md) y
 prueba local con Tailscale: [`../docs/GUIA-INTEGRACION-LOCAL.md`](../docs/GUIA-INTEGRACION-LOCAL.md).
 
-## Pendiente conocido
+## Stock hacia Booking: gRPC y respaldo REST
 
-- **Respaldo REST del stock** (`POST /api/v3/inventory/stock` en Booking): desde Render no se llega a su `:50051` por gRPC; falta el cuerpo
-  exacto de ese POST para implementarlo.
+El stock se envía a Booking por gRPC (`INVENTORY_GRPC_URL`, contrato `inventory.proto`). Desde Render el proxy público no soporta gRPC, así que existe un
+**respaldo REST** (`INVENTORY_REST_URL`): si gRPC falla —o si solo se configura la URL REST— cada cambio de stock se envía como `POST` JSON con los mismos
+campos de `StockUpdateMessage` (`service_id`, `item_id`, `date`, `time_slot`, `available_units`, `timestamp`, `slot_id`) y, si se define `INVENTORY_REST_API_KEY`, la
+cabecera `X-API-Key`. La sincronización masiva (`POST /api/v1/admin/inventory/sync`) envía un `POST` por auto.
+
+> **Suposición documentada:** la guía del agregador nombra el endpoint (`POST /api/v3/inventory/stock`) pero **no publica el cuerpo**. Se asumió que es el
+> mismo conjunto de campos del mensaje gRPC. Está verificado contra un servidor de prueba, no contra el real. Si Booking espera otro formato, el `POST` falla y
+> solo queda un aviso en el log (nunca afecta una reserva); bastaría ajustar `pushRest` en `apps/booking/src/inventory.client.ts`.

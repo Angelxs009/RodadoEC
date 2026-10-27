@@ -38,6 +38,7 @@ El gateway lo sirve en `/api/v3` (y en `/api/v2`, `/autos/*` y `POST /reservas`)
 - Errores: auto no disponible → `409 VEHICLE_UNAVAILABLE` (único código que activa la compensación de Saga, con `reason` del motivo); fechas inválidas → `422 INVALID_DATES`; reutilizar una `Idempotency-Key` con otro cuerpo → `400 IDEMPOTENCY_CONFLICT`.
 - La ficha del auto agrega `total_price`, `status` y `cleaning_cooldown`; la orden agrega los alias `vehicle_id` y `voucher_qr_payload`.
 - `inventory.proto` oficial (v3): `slot_id` (`slot-YYYYMMDD-HHMM`), `error_code` y `current_available` en el acuse, y `GetSlotAvailability`. El timestamp de cada aviso es estrictamente creciente.
+- Respaldo REST del stock hacia Booking (`INVENTORY_REST_URL`): mismo cuerpo que `StockUpdateMessage` en JSON (suposición; la guía no publica el esquema).
 - `GET /autos` sin parámetros devuelve el catálogo disponible completo (hasta 100): Booking lo importa así.
 
 ## 2.0.0 (REST v2) — contrato oficial del agregador Booking Prototipo

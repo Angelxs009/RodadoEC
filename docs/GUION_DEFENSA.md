@@ -81,9 +81,9 @@ Para que ningún servicio dependa de las tablas de otro. Usamos una sola instanc
 gratuito solo ofrece una base; el script `02_microservicios_autos.sql` permite separarlas en bases distintas sin cambiar el código.
 
 **¿Qué falta o qué mejorarían?**
-El respaldo REST para sincronizar el stock con Booking cuando no hay gRPC directo (en producción de Render no se llega a su puerto 50051;
-con Tailscale sí). Falta el cuerpo de esa petición, que el agregador debe confirmar. También escalar los módulos por separado en un host con
-soporte de gRPC, y reemplazar la pasarela simulada por una real.
+Confirmar con el agregador el cuerpo exacto del respaldo REST del stock (implementado pero basado en una suposición: los mismos campos del mensaje
+gRPC; desde Render no se llega a su puerto 50051). También escalar los módulos por separado en un host con soporte de gRPC, y reemplazar la
+pasarela simulada por una real.
 
 ## Si algo falla en la demo
 

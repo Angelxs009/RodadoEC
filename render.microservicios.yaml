@@ -33,4 +33,4 @@ services:
       - { key: AUTH_ENFORCE_V2, value: "false" }        # "true" → rutas protegidas del contrato exigen JWT o X-API-Key
       - { key: NODE_ID, value: NODE_AUT_LOCAL }
       - { key: NODE_NAME, value: "RodadoEc (Flota Partner)" }
-      # Opcionales (agrégalos en el panel si los necesitas): INVENTORY_GRPC_URL, RABBITMQ_URL, KAFKA_BROKERS, BOOKING_API_KEY
+      # Opcionales (agrégalos en el panel si los necesitas): INVENTORY_REST_URL (respaldo REST del stock hacia Booking), INVENTORY_GRPC_URL, RABBITMQ_URL, KAFKA_BROKERS, BOOKING_API_KEY

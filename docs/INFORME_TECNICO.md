@@ -201,8 +201,9 @@ para un host que sí soporte gRPC (por ejemplo Cloud Run o una máquina virtual 
 
 ## 10. Limitaciones conocidas
 
-- **Respaldo REST del stock** (`POST /api/v3/inventory/stock` en Booking): desde Render no se llega al `:50051` de Booking por gRPC; con
-  Tailscale (red privada) sí. Falta el cuerpo exacto de esa petición para implementar el respaldo.
+- **Respaldo REST del stock** (`POST /api/v3/inventory/stock` en Booking): desde Render no se llega al `:50051` de Booking por gRPC (con Tailscale, red
+  privada, sí). Implementamos el respaldo REST (apagado por defecto, `INVENTORY_REST_URL`) **suponiendo** que el cuerpo lleva los mismos campos del mensaje gRPC, porque
+  la guía no publica el esquema; está probado contra un servidor de prueba, no contra el real.
 - **Plan gratuito:** el servicio se duerme a los 15 minutos y tarda en despertar; las horas gratuitas del mes se comparten entre todos los
   servicios del espacio de trabajo de Render.
 - **Un solo proceso en Render:** los módulos comparten proceso y memoria (no se escalan ni fallan por separado en esa instancia).
