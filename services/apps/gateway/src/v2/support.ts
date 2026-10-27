@@ -55,7 +55,9 @@ export function checkTrip(b: { pickupDate: any; pickupTime?: any; dropoffDate: a
     if (val === undefined && !requireTimes) continue;
     if (!isSlot(val)) bad.push({ name, reason: 'Debe ser una franja de 30 minutos en formato HH:00 o HH:30.' });
   }
-  if (pd.ok && b.pickupDate < todayEcuador()) bad.push({ name: 'pickup_date', reason: 'La fecha de recogida no puede ser en el pasado.' });
+  // ALLOW_PAST_DATES=true (pruebas de integración con los ejemplos del contrato, cuyas fechas ya pasaron) omite esta regla.
+  const allowPast = /^(1|true)$/i.test(process.env.ALLOW_PAST_DATES ?? '');
+  if (pd.ok && !allowPast && b.pickupDate < todayEcuador()) bad.push({ name: 'pickup_date', reason: 'La fecha de recogida no puede ser en el pasado.' });
   if (pd.ok && dd.ok) {
     if (b.dropoffDate < b.pickupDate) bad.push({ name: 'dropoff_date', reason: 'La fecha de devolución no puede ser anterior a la de recogida.' });
     else if (b.dropoffDate === b.pickupDate && isSlot(b.pickupTime) && isSlot(b.dropoffTime) && b.dropoffTime <= b.pickupTime) {
