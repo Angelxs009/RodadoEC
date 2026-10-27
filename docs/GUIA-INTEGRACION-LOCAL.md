@@ -2,6 +2,8 @@
 
 Prueba 100% en local: el Booking llama a tu máquina por la red privada de Tailscale. Nada depende de Render.
 
+> **Alternativa pública:** el API también está en internet (`https://rodadoec-api.onrender.com`, contrato v3 en `/api/v3`, Swagger en `/api/docs-v3`), sin Tailscale. Esta guía es para cuando se prefiera probar contra tu propia máquina.
+
 ## 1. Antes de la reunión (una sola vez)
 
 1. **Levanta el sistema** (la primera vez tarda unos minutos porque construye las imágenes):
@@ -17,14 +19,14 @@ Prueba 100% en local: el Booking llama a tu máquina por la red privada de Tails
    New-NetFirewallRule -DisplayName "RodadoEc gateway 3000" -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Any
    ```
 4. El gateway ya escucha en `0.0.0.0:3000` (no solo en localhost). Comprobación desde otra máquina:
-   `curl http://<tu-ip-tailscale>:3000/api/v2/autos/health`.
+   `curl http://<tu-ip-tailscale>:3000/api/v3/autos/health`.
 
 ## 2. Qué compartir con el Booking
 
 | Dato | Valor |
 |---|---|
-| URL base del contrato v2 | `http://<tu-ip-tailscale>:3000/api/v2` |
-| Swagger del contrato (probar desde el navegador) | `http://<tu-ip-tailscale>:3000/api/docs-v2` |
+| URL base del contrato v2 | `http://<tu-ip-tailscale>:3000/api/v3` |
+| Swagger del contrato (probar desde el navegador) | `http://<tu-ip-tailscale>:3000/api/docs-v3` |
 | Salud del nodo (semáforo del Panel 1) | `GET /api/v2/autos/health` |
 | Cabeceras obligatorias en mutaciones | `Idempotency-Key` (UUID v4); opcional `X-Correlation-Id` |
 | Seguridad | apagada por defecto. Para exigir JWT o clave: `AUTH_ENFORCE_V2=true BOOKING_API_KEY=<clave> docker compose up -d`; el Booking envía `X-API-Key` |

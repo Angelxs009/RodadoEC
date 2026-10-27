@@ -17,7 +17,8 @@ Un cambio MAJOR **no muta** el contrato existente: se publica uno nuevo (`autos.
 
 | Contrato | Archivo | Versión |
 |---|---|---|
-| REST del agregador Booking (OpenAPI, ruta `/api/v2`) — **contrato oficial vigente** | `autos-openapi-v2.yaml` | 2.0.0 |
+| REST del agregador Booking (OpenAPI, ruta `/api/v3`) — **contrato oficial vigente** | `autos-openapi-v3.yaml` | 3.0.0 |
+| REST del agregador Booking, versión anterior (ruta `/api/v2`) | `autos-openapi-v2.yaml` | 2.0.0 |
 | REST público original (OpenAPI, ruta `/api/v1`) | `autos-openapi.yaml` | 1.1.0 |
 | gRPC de stock hacia Booking (`inventory.InventoryStockService`) | `proto/inventory/inventory.proto` | tal como lo publica Booking |
 | Eventos de dominio (AsyncAPI) | `autos-asyncapi.yaml` | 1.1.0 |
@@ -27,6 +28,17 @@ Un cambio MAJOR **no muta** el contrato existente: se publica uno nuevo (`autos.
 | gRPC Pagos | `proto/autos/payments/v1/payments.proto` | v1 |
 | gRPC Identidad | `proto/autos/identity/v1/identity.proto` | v1 |
 | GraphQL federado (subgrafo) | `graphql/autos.graphql` | 1.0.0 |
+
+## 3.0.0 (REST v3) — contrato canónico vigente
+
+`autos-openapi-v3.yaml` (copiado sin modificar) reemplaza al v2 como contrato de referencia; las 19 operaciones son las mismas.
+El gateway lo sirve en `/api/v3` (y en `/api/v2`, `/autos/*` y `POST /reservas`), con Swagger en `/api/docs-v3`.
+
+- La reserva exige `driver` en inglés (`full_name`, `email`, `phone`, `license_number`, `age` ≥ 18); `conductor` y los nombres en español se aceptan como alias. `coverage_type`: `BASIC` | `TOTAL` | `BASICA`.
+- Errores: auto no disponible → `409 VEHICLE_UNAVAILABLE` (único código que activa la compensación de Saga, con `reason` del motivo); fechas inválidas → `422 INVALID_DATES`; reutilizar una `Idempotency-Key` con otro cuerpo → `400 IDEMPOTENCY_CONFLICT`.
+- La ficha del auto agrega `total_price`, `status` y `cleaning_cooldown`; la orden agrega los alias `vehicle_id` y `voucher_qr_payload`.
+- `inventory.proto` oficial (v3): `slot_id` (`slot-YYYYMMDD-HHMM`), `error_code` y `current_available` en el acuse, y `GetSlotAvailability`. El timestamp de cada aviso es estrictamente creciente.
+- `GET /autos` sin parámetros devuelve el catálogo disponible completo (hasta 100): Booking lo importa así.
 
 ## 2.0.0 (REST v2) — contrato oficial del agregador Booking Prototipo
 

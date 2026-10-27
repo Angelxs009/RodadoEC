@@ -2,6 +2,23 @@
 
 **RodadoEc** es la implementación del dominio **Renta de Autos** para el proyecto integrador Booking Prototipo (curso Integración de Sistemas, PUCE). Cumple el contrato `contracts/autos-openapi.yaml` provisto por la cátedra e incorpora un backoffice de administración, un mecanismo de eventos (webhooks) y un frontend de reserva completo.
 
+## 0. Dos versiones del sistema
+
+| | Monolito (rama `main`) | **Microservicios (rama `microservicios`)** |
+|---|---|---|
+| Código | [`backend/`](backend) + [`frontend/`](frontend) | [`services/`](services) (gateway + Catálogo, Reservas, Pagos, Identidad) |
+| Contrato | `contracts/autos-openapi.yaml` (v1) | **`contracts/autos-openapi-v3.yaml`** (oficial del agregador Booking), más gRPC, GraphQL y eventos |
+| Datos | Postgres único | Postgres con un schema por servicio ([`database/02_microservicios_autos.sql`](database/02_microservicios_autos.sql)) |
+| En internet | `rodadoec-backend` (Render) | **`https://rodadoec-api.onrender.com`** (Render + Neon) |
+
+La versión de microservicios es la vigente: implementa las 19 operaciones del contrato v3 (máquina de 6 estados, cooldown de limpieza de 2 h,
+check-ins, mantenimiento, promociones B2B, feed de eventos), empuja el stock a Booking por gRPC, publica eventos en RabbitMQ/Kafka y
+valida cada respuesta contra el YAML con 49 pruebas de integración. Documentación completa en **[`services/README.md`](services/README.md)**;
+guías de integración con Booking en [`docs/`](docs). El frontend (`frontend/`, Vercel) es el mismo y apunta al API nuevo con `VITE_API_URL`.
+Para correr todo en local: `docker compose up --build` (gateway en `http://localhost:3000`).
+
+El resto de este documento describe el diseño del monolito original (contrato v1), que sigue en la rama `main`.
+
 ## 1. Alcance
 
 - **Backend** (`backend/`): API REST en NestJS + TypeORM + PostgreSQL, fiel al contrato OpenAPI del dominio Autos, más un módulo de administración y un despachador de eventos.

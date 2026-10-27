@@ -1,7 +1,10 @@
 # RodadoEc · Arquitectura de microservicios (Reto 2)
 
 Dominio **Autos** del Booking Prototipo, separado en cuatro microservicios detrás de un API Gateway.
-El monolito original sigue en [`../backend`](../backend) hasta validar este sistema.
+El monolito original sigue en [`../backend`](../backend) (rama `main`).
+
+**En internet:** API `https://rodadoec-api.onrender.com` · contrato oficial v3 en `/api/v3` (Swagger `/api/docs-v3`) · v1 en `/api/v1` ·
+GraphQL `/graphql` · salud `/autos/health` · frontend `https://rodado-ec.vercel.app` · base de datos en Neon (PostgreSQL).
 
 ```
  Frontend (Vercel) ──┐
@@ -21,6 +24,7 @@ El monolito original sigue en [`../backend`](../backend) hasta validar este sist
 | `apps/booking` | Búsqueda, hold, preview, órdenes, webhooks; **orquesta la saga** | 50052 | 3102 |
 | `apps/payments` | Pago simulado (tarjeta 4242… aprobada, 4000…0002 rechazada), reembolsos | 50053 | 3103 |
 | `apps/identity` | Registro/login de clientes, login de admin, CRUD de usuarios, emisión y verificación de JWT | 50054 | 3104 |
+| `apps/all` | Arranca los 5 módulos de arriba **en un solo proceso** (para hosting con una sola instancia, como Render gratis) | — | `$PORT` |
 | `libs/common` | Infra compartida: logger JSON, correlation id, errores ProblemDetails sobre gRPC, TTL cache, JWT, bootstrap | | |
 
 ## Cómo se cumple cada punto de la rúbrica
@@ -30,10 +34,10 @@ El monolito original sigue en [`../backend`](../backend) hasta validar este sist
 | Sistema migrado a microservicios | 4 servicios con datos propios (schema por servicio; ninguno lee tablas de otro) |
 | Booking consume APIs/eventos | REST `/api/v1` + GraphQL `/graphql` (subgrafo federado) + webhooks firmados con HMAC y reintentos |
 | API Gateway funcional | `apps/gateway`: enruta a los servicios, valida JWT, aplica idempotencia, traduce errores |
-| Contratos documentados y versionados | [`../contracts`](../contracts): OpenAPI/AsyncAPI 1.1.0, 5 `.proto` v1, GraphQL 1.0.0, `CHANGELOG.md`, `check-compat.js` |
-| Pruebas de integración | `test/gateway.integration.ts` (17 pruebas v1) y `test/v2-contract.integration.ts` (26 pruebas de conformidad con el contrato v2) |
+| Contratos documentados y versionados | [`../contracts`](../contracts): OpenAPI v3.0.0 (oficial) y v1/v2, `inventory.proto` oficial, 5 `.proto` internos v1, GraphQL 1.0.0, `CHANGELOG.md`, `check-compat.js` |
+| Pruebas de integración | `test/gateway.integration.ts` (17 pruebas v1) y `test/v2-contract.integration.ts` (32 pruebas de conformidad con el contrato v3): 49 en total, pasan contra la URL pública |
 | Seguridad básica | JWT HS256 con secretos separados admin/cliente, guard por rol, tarjetas validadas (Luhn), CORS por lista, HMAC en webhooks |
-| Desplegado en Internet | `../render.microservicios.yaml` (Render) + frontend en Vercel |
+| Desplegado en Internet | Render (`../render.microservicios.yaml`, un servicio con los 5 módulos) + Neon (Postgres) + frontend en Vercel |
 
 ### Saga de reserva (booking-service)
 
@@ -122,8 +126,8 @@ GATEWAY_URL=http://localhost:3000 npm run test:integration
 |---|---|---|
 | `DATABASE_URL`, `DATABASE_SSL` | catalog, booking, payments, identity | Postgres (cada servicio usa su schema) |
 | `CATALOG_GRPC_URL`, `BOOKING_GRPC_URL`, `PAYMENTS_GRPC_URL`, `IDENTITY_GRPC_URL` | gateway (todas), booking (catalog y payments) | Dirección `host:puerto` de cada servicio |
-| `GRPC_TLS=true` | quien llama | gRPC sobre TLS (Render termina TLS en `:443`) |
-| `GRPC_ON_PORT=true` | servicios | gRPC escucha en `$PORT` y no se abre HTTP (Render: un solo puerto) |
+| `NO_SERVICE_HTTP=true` | servicios | Sin puerto HTTP de /health: solo gRPC local (lo usa `apps/all`) |
+| `GRPC_TLS=true`, `GRPC_ON_PORT=true` | quien llama / servicios | Solo para el despliegue de 5 servicios separados (`render.distribuido.yaml`); **no funcionan en Render** (ver abajo) |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | identity | Credenciales del administrador |
 | `ADMIN_JWT_SECRET`, `CUSTOMER_JWT_SECRET` | gateway **e** identity (iguales) | Firma/verificación de JWT |
 | `AUTH_ENFORCE_V2`, `BOOKING_API_KEY` | gateway | `true` exige JWT o `X-API-Key` en las rutas protegidas del contrato v2; `BOOKING_API_KEY` es la clave M2M |
@@ -138,13 +142,40 @@ GATEWAY_URL=http://localhost:3000 npm run test:integration
 > sin tokens. La protección está implementada y se activa **sin cambiar código**; para la defensa/entrega final ponerlas en `true`
 > (Swagger mostrará entonces el candado).
 
-## Despliegue en Render (plan gratis) — puntos a vigilar
+## Despliegue en internet
 
-1. Crear un **Blueprint** apuntando a `render.microservicios.yaml` (crea 5 servicios + 1 Postgres). Completar las variables
-   `sync: false` (`ADMIN_USERNAME`, `ADMIN_PASSWORD`, `CORS_ORIGINS`).
-2. Los servicios gratis **se duermen a los 15 min**: antes de una demo abrir `https://<gateway>/warmup` para despertar toda la cadena.
-3. Las horas gratis (750/mes) son **compartidas** por todos los servicios del workspace: cinco servicios encendidos 24/7 no caben.
-   Mantener el monolito apagado mientras se usa este sistema, o pasar a un plan de pago para la defensa.
-4. El Postgres gratis **expira a los ~30 días** (la base actual vence cerca del 28-oct-2026): hay que recrearla o subir de plan.
-5. La comunicación entre servicios usa las URL públicas `*.onrender.com:443` con TLS (el plan gratis no ofrece red privada entre
-   servicios web). Si Render rechaza gRPC en algún servicio, la alternativa es el mismo despliegue con `docker compose` en una VM.
+**Render (API) + Neon (base de datos) + Vercel (frontend).**
+
+| Pieza | Dónde | Cómo |
+|---|---|---|
+| API (gateway + 4 servicios) | Render, un solo servicio `rodadoec-api` | Blueprint `render.microservicios.yaml`, rama `microservicios`, `APP=all` |
+| Base de datos | Neon (PostgreSQL gratis) | URL **directa** (sin `-pooler`) en `DATABASE_URL`; cada servicio usa su schema |
+| Frontend | Vercel (`rodado-ec`) | `VITE_API_URL=https://rodadoec-api.onrender.com` (tipo Config) |
+
+**Por qué un solo servicio de Render y no cinco.** El proxy público de Render entrega las peticiones al servicio como HTTP/1.x, no
+HTTP/2, y gRPC lo necesita: la llamada gRPC a un servicio de Render devuelve **502** (verificado; también lo reporta la comunidad de
+Render). Así que `apps/all` arranca Catálogo, Pagos, Identidad y Reservas como aplicaciones Nest separadas (su módulo, su schema y su
+servidor gRPC) y el gateway las llama por gRPC en `127.0.0.1` dentro del mismo contenedor. Solo el gateway abre el puerto público.
+El despliegue con 5 servicios independientes (para un host que sí soporte gRPC) quedó en `render.distribuido.yaml`.
+
+**Variables en Render.** El blueprint no puede crear las `sync: false` al sincronizarse solo: `DATABASE_URL`, `ADMIN_USERNAME` y
+`ADMIN_PASSWORD` se agregan a mano (Environment → Add variable → Import from .env). Los secretos JWT los genera Render.
+
+Puntos a vigilar (plan gratis):
+1. El servicio **se duerme a los 15 min** y tarda en despertar: antes de una demo abrir `/warmup`.
+2. Las horas gratis (750/mes) son compartidas por todo el workspace de Render.
+3. Esta red bloquea el puerto 5432 saliente: no se puede probar la conexión a Neon desde la PC; se verifica en los logs de Render.
+4. `AUTH_ENFORCE_ADMIN=true` en producción (el API es público): el panel de admin exige JWT. `AUTH_ENFORCE_V2` queda apagado para que Booking pueda probar sin clave.
+5. Con `ALLOW_PAST_DATES=true` se aceptan fechas pasadas (útil con los ejemplos del contrato, cuyas fechas ya pasaron).
+
+## Registrar el nodo en el panel de Booking
+
+Base URL REST: `https://rodadoec-api.onrender.com`. El semáforo consulta `GET /health` o `GET /autos/health` (ambos responden) y el botón de
+catálogo importa `GET /autos` (devuelve el catálogo disponible completo). Booking también puede usar `/api/v3`, `/api/v2` o la raíz
+(`/autos/*`, `POST /reservas`) como `baseUrlRest`. Guía completa: [`../docs/GUIA_INTEGRACION_AUTOS.md`](../docs/GUIA_INTEGRACION_AUTOS.md) y
+prueba local con Tailscale: [`../docs/GUIA-INTEGRACION-LOCAL.md`](../docs/GUIA-INTEGRACION-LOCAL.md).
+
+## Pendiente conocido
+
+- **Respaldo REST del stock** (`POST /api/v3/inventory/stock` en Booking): desde Render no se llega a su `:50051` por gRPC; falta el cuerpo
+  exacto de ese POST para implementarlo.
