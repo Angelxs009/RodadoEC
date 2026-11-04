@@ -53,8 +53,9 @@ export class InventoryClient {
 
   /**
    * Respaldo REST del stock (Guía §3: "fallback REST POST /api/v3/inventory/stock"). Se usa cuando gRPC falla o no hay ruta gRPC
-   * (p. ej. desde Render, cuyo proxy no soporta HTTP/2). SUPOSICIÓN: el cuerpo JSON lleva los mismos 7 campos de StockUpdateMessage;
-   * la guía no publica su esquema. Si Booking espera otro, el POST falla y solo queda un aviso en el log (nunca afecta la reserva).
+   * (p. ej. desde Render, cuyo proxy no soporta HTTP/2). El cuerpo es {item_id, available_units, date, reason} (guía de socios de
+   * Booking para Azure). El texto de `reason` es libre en nuestra implementación; si Booking espera valores fijos, el POST falla y
+   * solo queda un aviso en el log (nunca afecta la reserva).
    */
   private async pushRest(msg: Record<string, unknown>): Promise<boolean> {
     const url = process.env.INVENTORY_REST_URL;
@@ -65,7 +66,13 @@ export class InventoryClient {
       const res = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ ...msg, timestamp: Number(msg.timestamp) }),
+        // Cuerpo que pide la guía de Booking para POST /api/v3/inventory/stock.
+        body: JSON.stringify({
+          item_id: msg.item_id,
+          available_units: msg.available_units,
+          date: msg.date,
+          reason: Number(msg.available_units) > 0 ? 'Vehículo disponible' : 'Vehículo reservado u ocupado',
+        }),
         signal: AbortSignal.timeout(DEADLINE_MS),
       });
       if (!res.ok) {
