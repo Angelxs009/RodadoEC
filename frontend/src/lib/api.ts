@@ -251,7 +251,44 @@ export const adminApi = {
       method: 'GET',
       adminAuth: true,
     }),
+
+  /**
+   * Check-in de entrega en mostrador (contrato v3.1): el auto pasa a ENTREGADO y el backend avisa al Booking.
+   * Vive en /api/v3 (no en /api/v1), por eso no usa `request`.
+   */
+  confirmDelivery: async (
+    locator: string,
+    payload: { licencia_conducir: string; km_salida: number; tecnico_entrega?: string; observaciones?: string },
+  ): Promise<DeliveryResult> => {
+    const token = getAdminToken();
+    const res = await fetch(
+      `${import.meta.env.VITE_API_URL ?? ''}/api/v3/autos/orders/${encodeURIComponent(locator)}/checkin-entrega`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Affiliate-Id': AFFILIATE_ID,
+          'Idempotency-Key': crypto.randomUUID(),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+    const raw = await res.text();
+    const data = raw ? JSON.parse(raw) : undefined;
+    if (!res.ok) throw new ApiError(data as ProblemDetails);
+    return data as DeliveryResult;
+  },
 };
+
+export interface DeliveryResult {
+  success: boolean;
+  order_id: string;
+  estado_orden: string;
+  km_salida: number;
+  /** Resultado del aviso al Booking Central; `notified:false` no deshace la entrega. */
+  booking_sync?: { notified: boolean; status?: number; reason?: string };
+}
 
 export const customerAuthApi = {
   register: (payload: RegisterCustomerInput) =>

@@ -7,6 +7,7 @@ import {
 } from '@autos/common';
 import { randomUUID } from 'crypto';
 import { Backends } from '../backends';
+import { BookingNotifier } from './booking-notifier';
 import { V2AccessGuard, V2Roles } from '../common/auth';
 import { IdempotencyInterceptor, IdempotencyKeyGuard } from '../common/idempotency';
 import {
@@ -27,7 +28,7 @@ const COVERAGE_INPUT = ['BASIC', 'BASICA', 'TOTAL', 'PREMIUM'];
 export class AutosV2Controller {
   private snapshot?: CatalogData;
 
-  constructor(private readonly backends: Backends) {}
+  constructor(private readonly backends: Backends, private readonly notifier: BookingNotifier) {}
 
   // ══ Lectura del catálogo con tolerancia a fallos (último dato válido como respaldo) ════════════
   /**
@@ -375,6 +376,8 @@ export class AutosV2Controller {
       km_salida: b.km_salida,
       technician: b.tecnico_entrega ?? '',
     });
+    // Contrato v3.1: la entrega física se notifica al Booking Central (no bloquea ni deshace la entrega).
+    const bookingSync = await this.notifier.notifyDelivery(o, { adminId: b.tecnico_entrega, observaciones: b.observaciones });
     return {
       success: true,
       order_id: o.locator,
@@ -383,6 +386,7 @@ export class AutosV2Controller {
       km_salida: o.km_salida,
       licencia_verificada: b.licencia_conducir,
       mensaje: 'Llaves entregadas al conductor. Auto en tránsito (Fase ENTREGADO).',
+      booking_sync: bookingSync,
     };
   }
 

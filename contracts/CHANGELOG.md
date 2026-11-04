@@ -29,6 +29,16 @@ Un cambio MAJOR **no muta** el contrato existente: se publica uno nuevo (`autos.
 | gRPC Identidad | `proto/autos/identity/v1/identity.proto` | v1 |
 | GraphQL federado (subgrafo) | `graphql/autos.graphql` | 1.0.0 |
 
+## 3.1.0 (REST v3.1, MINOR) — clientes y aviso de entrega al Booking
+
+Solo se agregaron endpoints y un campo opcional; nada de lo publicado en 3.0.0 cambió (compatible hacia atrás). Requerimiento de cátedra.
+
+- `GET /api/v3/clientes?email=&identificacion=`: `200 {client_id, nombre, email, identificacion, telefono, licencia}` si el conductor existe; `404` si no.
+- `POST /api/v3/clientes` (`nombre`, `email`, `identificacion` obligatorios; `telefono`, `licencia` opcionales): `201 {client_id}`. Es idempotente: si ya existe un cliente con ese correo (sin distinguir mayúsculas) o esa identificación se devuelve el mismo `client_id`, sin duplicar.
+- Check-in de entrega (`POST /autos/orders/{id}/checkin-entrega`): tras registrar la entrega, el backend avisa al Booking con `POST {BOOKING_CORE_URL}/api/v3/reservas/{external_order_id}/checkin` (`X-API-Key`; estado `CONFIRMADO_ASISTIDO`, `client_id` local, `admin_id`, `fecha_checkin`, `observaciones`). El aviso es de mejor esfuerzo: si falla, la entrega no se deshace. La respuesta agrega el campo opcional `booking_sync` (`notified`, `status`, `reason`).
+- gRPC Identidad (MINOR): `IdentityService.FindClient` y `IdentityService.CreateClient`; mensajes `ClientRecord`, `FindClientRequest/Response`, `CreateClientRequest`.
+- Configuración: `BOOKING_CORE_URL` (por defecto `https://booking-core-api.azurewebsites.net`) y la clave `BOOKING_CHECKIN_API_KEY` (si falta, `BOOKING_API_KEY`).
+
 ## 3.0.0 (REST v3) — contrato canónico vigente
 
 `autos-openapi-v3.yaml` (copiado sin modificar) reemplaza al v2 como contrato de referencia; las 19 operaciones son las mismas.

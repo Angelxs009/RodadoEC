@@ -169,6 +169,45 @@ describe('GraphQL federado', () => {
   });
 });
 
+describe('Clientes v3.1 (/api/v3/clientes)', () => {
+  const stamp = Date.now();
+  const email = `cli-${stamp}@test.com`;
+  const identificacion = String(stamp).slice(-10);
+  const post = (b: unknown) => http('POST', '/api/v3/clientes', b);
+  let clientId: string;
+
+  it('404 si el conductor no existe', async () => {
+    const r = await http('GET', `/api/v3/clientes?email=${encodeURIComponent(email)}`);
+    expect(r.status).toBe(404);
+  });
+
+  it('crea al conductor y responde 201 con su client_id', async () => {
+    const r = await post({ nombre: 'Cli Test', email, identificacion, telefono: '0999', licencia: 'L-9' });
+    expect(r.status).toBe(201);
+    expect(r.body.client_id).toBeTruthy();
+    clientId = r.body.client_id;
+  });
+
+  it('no duplica: mismo email (otra capitalización) o misma identificación devuelven el mismo client_id', async () => {
+    const byMail = await post({ nombre: 'Otro', email: email.toUpperCase(), identificacion: `${identificacion}9` });
+    const byId = await post({ nombre: 'Otro', email: `otro-${stamp}@test.com`, identificacion });
+    expect(byMail.body.client_id).toBe(clientId);
+    expect(byId.body.client_id).toBe(clientId);
+  });
+
+  it('200 con los datos al buscar por email o por identificación', async () => {
+    for (const q of [`email=${encodeURIComponent(email)}`, `identificacion=${identificacion}`]) {
+      const r = await http('GET', `/api/v3/clientes?${q}`);
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({ client_id: clientId, nombre: 'Cli Test', email, identificacion });
+    }
+  });
+
+  it('valida el cuerpo (400)', async () => {
+    expect((await post({ email: 'x' })).status).toBe(400);
+  });
+});
+
 describe('Webhooks', () => {
   it('registra y elimina una suscripción', async () => {
     const c = await api('POST', '/webhooks', {

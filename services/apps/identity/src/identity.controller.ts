@@ -49,4 +49,14 @@ export class IdentityController {
     await this.identity.deleteUser(req);
     return {};
   }
+
+  @GrpcMethod(S, 'FindClient')
+  findClient(req: any) {
+    return this.identity.findClient(req);
+  }
+
+  @GrpcMethod(S, 'CreateClient')
+  createClient(req: any) {
+    return this.identity.createClient(req);
+  }
 }

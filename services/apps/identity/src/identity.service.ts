@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { timingSafeEqual } from 'crypto';
 import { Repository } from 'typeorm';
 import { badRequest, conflict, JwtTokens, notFound, unauthorized } from '@autos/common';
-import { AdminUser, Customer } from './entities/identity.entities';
+import { AdminUser, Client, Customer } from './entities/identity.entities';
 import { PasswordService } from './password.service';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,8 +36,56 @@ export class IdentityService {
   constructor(
     @InjectRepository(AdminUser) private readonly admins: Repository<AdminUser>,
     @InjectRepository(Customer) private readonly customers: Repository<Customer>,
+    @InjectRepository(Client) private readonly clients: Repository<Client>,
     private readonly passwords: PasswordService,
   ) {}
+
+  // ── Conductores (contrato v3.1: sincronización con el Booking, sin duplicados) ──
+  private clientMsg(c: Client) {
+    return {
+      client_id: c.id,
+      nombre: c.nombre,
+      email: c.email,
+      identificacion: c.identificacion ?? '',
+      telefono: c.telefono ?? '',
+      licencia: c.licencia ?? '',
+    };
+  }
+
+  /** Busca por correo y/o identificación: basta con que coincida uno de los dos. */
+  private async lookupClient(email?: string, identificacion?: string): Promise<Client | null> {
+    const mail = email?.trim().toLowerCase();
+    const ident = identificacion?.trim();
+    if (mail) {
+      const byMail = await this.clients.findOneBy({ email: mail });
+      if (byMail) return byMail;
+    }
+    if (ident) return this.clients.findOneBy({ identificacion: ident });
+    return null;
+  }
+
+  async findClient(req: { email?: string; identificacion?: string }) {
+    const c = await this.lookupClient(req.email, req.identificacion);
+    return { found: !!c, client: c ? this.clientMsg(c) : undefined };
+  }
+
+  /** Idempotente: si el conductor ya existe (mismo correo o misma identificación) devuelve el existente. */
+  async createClient(req: { nombre: string; email: string; identificacion?: string; telefono?: string; licencia?: string }) {
+    const email = req.email.trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) throw badRequest('El correo del cliente no es válido.');
+    const existing = await this.lookupClient(email, req.identificacion);
+    if (existing) return this.clientMsg(existing);
+    const saved = await this.clients.save(
+      this.clients.create({
+        nombre: req.nombre.trim(),
+        email,
+        identificacion: req.identificacion?.trim() || null,
+        telefono: req.telefono?.trim() || null,
+        licencia: req.licencia?.trim() || null,
+      }),
+    );
+    return this.clientMsg(saved);
+  }
 
   // ── Clientes ────────────────────────────────────────────────────────────
   async registerCustomer(req: {

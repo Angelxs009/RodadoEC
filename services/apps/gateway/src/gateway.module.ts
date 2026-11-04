@@ -12,6 +12,8 @@ import { AdminController } from './rest/admin.controller';
 import { AutosController } from './rest/autos.controller';
 import { HealthController } from './rest/health.controller';
 import { AutosV2Controller } from './v2/autos-v2.controller';
+import { BookingNotifier } from './v2/booking-notifier';
+import { ClientesController } from './v2/clientes.controller';
 
 /** Subgrafo federado: el esquema es el contrato versionado de contracts/graphql/autos.graphql (schema-first). */
 const graphqlSchema = join(protoDir(), '..', 'graphql', 'autos.graphql').replace(/\\/g, '/');
@@ -26,7 +28,7 @@ const graphqlSchema = join(protoDir(), '..', 'graphql', 'autos.graphql').replace
       introspection: true,
     }),
   ],
-  controllers: [AutosController, AccountsController, AdminController, HealthController, AutosV2Controller],
-  providers: [{ provide: APP_GUARD, useClass: AuthGuard }, V2AccessGuard, ...GRAPHQL_PROVIDERS],
+  controllers: [AutosController, AccountsController, AdminController, HealthController, AutosV2Controller, ClientesController],
+  providers: [{ provide: APP_GUARD, useClass: AuthGuard }, V2AccessGuard, BookingNotifier, ...GRAPHQL_PROVIDERS],
 })
 export class GatewayModule {}

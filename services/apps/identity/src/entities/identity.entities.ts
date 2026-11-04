@@ -45,3 +45,28 @@ export class Customer {
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 }
+
+/** Conductor registrado en el sistema (puede venir del Booking o de una reserva). Sin duplicados por email ni identificación. */
+@Entity('clients')
+export class Client {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'varchar', length: 160 })
+  nombre: string;
+
+  @Column({ type: 'varchar', length: 180, unique: true })
+  email: string;
+
+  @Column({ type: 'varchar', length: 40, nullable: true, unique: true })
+  identificacion: string | null;
+
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  telefono: string | null;
+
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  licencia: string | null;
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  created_at: Date;
+}
