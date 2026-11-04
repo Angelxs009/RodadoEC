@@ -332,6 +332,8 @@ export class AutosV2Controller {
       },
       customer_id: customerId,
     });
+    // Contrato v3.1: el conductor de la reserva queda registrado como cliente (sin duplicarse); no bloquea la reserva.
+    void this.notifier.clientIdOf(order.driver_details).catch(() => undefined);
     return orderToV2(this.shape(order), this.base(req));
   }
 

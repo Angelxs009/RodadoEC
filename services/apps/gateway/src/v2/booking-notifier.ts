@@ -16,14 +16,19 @@ export class BookingNotifier {
   constructor(private readonly backends: Backends) {}
 
   /** client_id local del conductor de la orden: se reutiliza el existente o se registra para no duplicarlo. */
-  private async clientIdOf(driver: any): Promise<string> {
+  async clientIdOf(driver: any): Promise<string> {
     if (!driver?.email) return '';
     try {
+      // La orden guarda first_name/last_name/phone_number/license (ver BookingService.createOrderV2); full_name y phone
+      // cubren el formato de entrada por si llega sin transformar.
+      const first = String(driver.first_name ?? '').trim();
+      const last = String(driver.last_name ?? '').trim();
+      const nombre = driver.full_name ?? (last && last !== first ? `${first} ${last}` : first);
       const c = await this.backends.identity.call<any>('CreateClient', {
-        nombre: driver.full_name ?? '',
+        nombre: nombre || driver.email,
         email: driver.email,
         identificacion: driver.document_id ?? driver.identificacion ?? '',
-        telefono: driver.phone ?? '',
+        telefono: driver.phone_number ?? driver.phone ?? '',
         licencia: driver.license ?? '',
       });
       return c.client_id;
@@ -38,13 +43,15 @@ export class BookingNotifier {
     const apiKey = process.env.BOOKING_CHECKIN_API_KEY ?? process.env.BOOKING_API_KEY;
     const externalId = order.locator;
     const url = `${base}/api/v3/reservas/${encodeURIComponent(externalId)}/checkin`;
+    // El conductor se registra como cliente aunque el aviso no pueda salir (así existe en nuestro sistema sin duplicarse).
+    const clientId = await this.clientIdOf(order.driver_details);
     if (!apiKey) {
       this.logger.warn(`Check-in de ${externalId} sin notificar a Booking: falta BOOKING_API_KEY.`);
-      return { notified: false, reason: 'BOOKING_API_KEY no configurada' };
+      return { notified: false, client_id: clientId, reason: 'BOOKING_API_KEY no configurada' };
     }
     const body = {
       external_order_id: externalId,
-      client_id: await this.clientIdOf(order.driver_details),
+      client_id: clientId,
       estado: 'CONFIRMADO_ASISTIDO',
       admin_id: opts.adminId || 'operador-mostrador',
       fecha_checkin: (order.delivered_at ? new Date(order.delivered_at) : new Date()).toISOString(),
@@ -59,12 +66,12 @@ export class BookingNotifier {
       });
       if (!res.ok) {
         this.logger.warn(`Booking respondió HTTP ${res.status} al check-in de ${externalId}`);
-        return { notified: false, status: res.status, reason: `Booking respondió HTTP ${res.status}` };
+        return { notified: false, client_id: clientId, status: res.status, reason: `Booking respondió HTTP ${res.status}` };
       }
-      return { notified: true, status: res.status };
+      return { notified: true, client_id: clientId, status: res.status };
     } catch (err) {
       this.logger.warn(`Check-in de ${externalId} no llegó a Booking: ${(err as Error).message}`);
-      return { notified: false, reason: (err as Error).message };
+      return { notified: false, client_id: clientId, reason: (err as Error).message };
     }
   }
 }
