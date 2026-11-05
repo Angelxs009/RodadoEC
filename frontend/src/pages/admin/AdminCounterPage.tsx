@@ -145,9 +145,9 @@ export function AdminCounterPage() {
       )}
 
       {error && <ErrorState message={error} onRetry={load} />}
-      {loading && <div className="h-40 animate-pulse rounded-md bg-neutral-100" />}
+      {(loading || searching) && <div className="h-40 animate-pulse rounded-md bg-neutral-100" aria-label="Buscando" />}
 
-      {!loading && !error && results.length === 0 && (
+      {!loading && !searching && !error && results.length === 0 && (
         <EmptyState
           title={applied ? 'No hay reservas con ese dato' : 'Sin reservas pendientes de entrega'}
           description={
@@ -158,7 +158,7 @@ export function AdminCounterPage() {
         />
       )}
 
-      {!loading && results.length > 0 && (
+      {!loading && !searching && results.length > 0 && (
         <>
           <p className="text-sm font-medium text-neutral-500">
             {applied ? `${results.length} resultado(s)` : `${results.length} reserva(s) pendiente(s) de entrega`}
