@@ -9,6 +9,7 @@ import { CustomerAuthProvider } from './lib/customer-auth-context';
 import { AccountLoginPage } from './pages/account/AccountLoginPage';
 import { AccountRegisterPage } from './pages/account/AccountRegisterPage';
 import { MyAccountPage } from './pages/account/MyAccountPage';
+import { AdminCounterPage } from './pages/admin/AdminCounterPage';
 import { AdminDepotsPage } from './pages/admin/AdminDepotsPage';
 import { AdminLoginPage } from './pages/admin/AdminLoginPage';
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage';
@@ -70,6 +71,16 @@ function App() {
                   <RequireAdminAuth>
                     <AdminLayout>
                       <AdminDepotsPage />
+                    </AdminLayout>
+                  </RequireAdminAuth>
+                }
+              />
+              <Route
+                path="/admin/mostrador"
+                element={
+                  <RequireAdminAuth>
+                    <AdminLayout>
+                      <AdminCounterPage />
                     </AdminLayout>
                   </RequireAdminAuth>
                 }

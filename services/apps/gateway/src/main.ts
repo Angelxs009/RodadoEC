@@ -29,7 +29,9 @@ async function bootstrap() {
   // El error ProblemDetails conserva la URL original en `instance` (p. ej. "/reservas").
   app.use((req: Request, _res: Response, next: NextFunction) => {
     const u = req.url;
-    if (u.startsWith('/api/v3/')) req.url = '/api/v2/' + u.slice('/api/v3/'.length);
+    // Contrato v3.1: GET /api/v3/health es el healthcheck del nodo (el mismo que /api/v3/autos/health).
+    if (u === '/api/v3/health' || u.startsWith('/api/v3/health?')) req.url = '/api/v2/autos/health' + u.slice('/api/v3/health'.length);
+    else if (u.startsWith('/api/v3/')) req.url = '/api/v2/' + u.slice('/api/v3/'.length);
     else if (u === '/autos' || u.startsWith('/autos/') || u.startsWith('/autos?')) req.url = '/api/v2' + u;
     else if (u === '/reservas' || u.startsWith('/reservas/') || u.startsWith('/reservas?')) req.url = '/api/v2/autos' + u;
     next();

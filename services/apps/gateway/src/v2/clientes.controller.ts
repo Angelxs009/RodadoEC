@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Logger, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { InvalidParam, notFound } from '@autos/common';
 import { Backends } from '../backends';
@@ -13,6 +13,8 @@ import { isEmail, isText, throwIfInvalid } from './support';
 @Controller('v2/clientes')
 @ApiExcludeController()
 export class ClientesController {
+  private readonly logger = new Logger('Clientes');
+
   constructor(private readonly backends: Backends) {}
 
   /** 200 con el cliente si existe (por email o identificación); 404 si no. */
@@ -25,6 +27,10 @@ export class ClientesController {
     }
     throwIfInvalid(bad);
     const r = await this.backends.identity.call<any>('FindClient', { email: email ?? '', identificacion: identificacion ?? '' });
+    this.logger.log(
+      `Consulta de cliente (email=${email ?? '-'}, identificacion=${identificacion ?? '-'}): ${r.found ? `existe ${r.client.client_id}` : 'no existe'}`,
+      'clientes',
+    );
     if (!r.found) throw notFound('Cliente no encontrado', 'No existe un cliente con ese email o identificación.');
     return r.client;
   }
@@ -46,6 +52,7 @@ export class ClientesController {
       telefono: b.telefono ?? '',
       licencia: b.licencia ?? '',
     });
+    this.logger.log(`Cliente registrado o reutilizado (email=${b.email}): ${c.client_id}`, 'clientes');
     return { client_id: c.client_id };
   }
 }

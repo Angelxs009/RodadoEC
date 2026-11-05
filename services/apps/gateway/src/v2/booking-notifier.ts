@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { CORRELATION_HEADER, currentCorrelationId } from '@autos/common';
 import { Backends } from '../backends';
 
 const DEADLINE_MS = 8000;
@@ -60,7 +61,12 @@ export class BookingNotifier {
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+          // Trazabilidad: el mismo correlation_id viaja hacia Booking.
+          ...(currentCorrelationId() ? { [CORRELATION_HEADER]: currentCorrelationId() as string } : {}),
+        },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(DEADLINE_MS),
       });

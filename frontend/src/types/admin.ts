@@ -38,6 +38,7 @@ export interface AdminOrder {
   locator: string;
   status: OrderStatus;
   vehicle_details: { make?: string; model?: string; vehicle_id?: string };
+  driver_details?: { first_name?: string; last_name?: string; email?: string; phone_number?: string } | null;
   total_price: number;
   currency: string;
   creation_date: string;

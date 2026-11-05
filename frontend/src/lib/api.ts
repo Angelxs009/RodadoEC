@@ -281,6 +281,29 @@ export const adminApi = {
   },
 };
 
+/** Cliente (conductor) registrado en /api/v3/clientes. */
+export interface ClientRecord {
+  client_id: string;
+  nombre: string;
+  email: string;
+  identificacion: string;
+}
+
+/** Busca un conductor por correo o identificación; devuelve null si no existe (404). */
+export async function findClient(query: { email?: string; identificacion?: string }): Promise<ClientRecord | null> {
+  const params = new URLSearchParams();
+  if (query.email) params.set('email', query.email);
+  if (query.identificacion) params.set('identificacion', query.identificacion);
+  const res = await fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/v3/clientes?${params}`, {
+    headers: { 'X-Affiliate-Id': AFFILIATE_ID },
+  });
+  if (res.status === 404) return null;
+  const raw = await res.text();
+  const data = raw ? JSON.parse(raw) : undefined;
+  if (!res.ok) throw new ApiError(data as ProblemDetails);
+  return data as ClientRecord;
+}
+
 export interface DeliveryResult {
   success: boolean;
   order_id: string;

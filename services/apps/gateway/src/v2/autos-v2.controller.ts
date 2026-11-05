@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Headers, HttpCode, HttpException, HttpStatus, Param, Post, Put, Query, Req, Res, UseGuards, UseInterceptors,
+  Body, Controller, Get, Headers, HttpCode, HttpException, HttpStatus, Logger, Param, Post, Put, Query, Req, Res, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import {
@@ -27,6 +27,7 @@ const COVERAGE_INPUT = ['BASIC', 'BASICA', 'TOTAL', 'PREMIUM'];
 @ApiExcludeController()
 export class AutosV2Controller {
   private snapshot?: CatalogData;
+  private readonly logger = new Logger('AutosV3');
 
   constructor(private readonly backends: Backends, private readonly notifier: BookingNotifier) {}
 
@@ -108,6 +109,14 @@ export class AutosV2Controller {
       uptime_seconds: Math.round(process.uptime()),
       latencia_ms: Math.max(catalog.ms, booking.ms, payments.ms, identity.ms),
       circuit_breaker_estado: circuit,
+      // La base de datos se comprueba a través de Catálogo y Reservas (ambos la consultan en cada llamada).
+      base_de_datos: catalog.up && booking.up ? 'UP' : 'DOWN',
+      servicios: {
+        catalogo: catalog.up ? 'UP' : 'DOWN',
+        reservas: booking.up ? 'UP' : 'DOWN',
+        pagos: payments.up ? 'UP' : 'DOWN',
+        identidad: identity.up ? 'UP' : 'DOWN',
+      },
       cooldown_activo_count: vehicles.filter((v) => v.status === 'CLEANING').length,
       total_vehiculos: vehicles.length,
       timestamp: new Date().toISOString(),
@@ -334,6 +343,7 @@ export class AutosV2Controller {
     });
     // Contrato v3.1: el conductor de la reserva queda registrado como cliente (sin duplicarse); no bloquea la reserva.
     void this.notifier.clientIdOf(order.driver_details).catch(() => undefined);
+    this.logger.log(`Reserva ${order.locator} creada: auto ${norm.vehicle_id}, ${norm.pickup_date} a ${norm.dropoff_date}, conductor ${norm.email}`, 'reservas');
     return orderToV2(this.shape(order), this.base(req));
   }
 
@@ -380,6 +390,10 @@ export class AutosV2Controller {
     });
     // Contrato v3.1: la entrega física se notifica al Booking Central (no bloquea ni deshace la entrega).
     const bookingSync = await this.notifier.notifyDelivery(o, { adminId: b.tecnico_entrega, observaciones: b.observaciones });
+    this.logger.log(
+      `Entrega confirmada de ${o.locator} (km ${b.km_salida}); aviso a Booking: ${bookingSync.notified ? 'enviado' : `no enviado (${bookingSync.reason ?? 'sin motivo'})`}`,
+      'entregas',
+    );
     return {
       success: true,
       order_id: o.locator,
