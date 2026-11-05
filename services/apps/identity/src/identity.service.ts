@@ -64,6 +64,32 @@ export class IdentityService {
     return null;
   }
 
+  /**
+   * Rellena los datos que el cliente aún no tiene (p. ej. la cédula que llega de Booking después de que la reserva
+   * ya lo registró solo con el correo). Nunca pisa un dato existente ni toma una identificación de otro cliente.
+   */
+  private async completeClient(c: Client, req: { nombre?: string; identificacion?: string; telefono?: string; licencia?: string }) {
+    let changed = false;
+    const ident = req.identificacion?.trim();
+    if (!c.identificacion && ident && !(await this.clients.findOneBy({ identificacion: ident }))) {
+      c.identificacion = ident;
+      changed = true;
+    }
+    if (!c.telefono && req.telefono?.trim()) {
+      c.telefono = req.telefono.trim();
+      changed = true;
+    }
+    if (!c.licencia && req.licencia?.trim()) {
+      c.licencia = req.licencia.trim();
+      changed = true;
+    }
+    if ((!c.nombre || c.nombre === c.email) && req.nombre?.trim()) {
+      c.nombre = req.nombre.trim();
+      changed = true;
+    }
+    return changed ? this.clients.save(c) : c;
+  }
+
   async findClient(req: { email?: string; identificacion?: string }) {
     const c = await this.lookupClient(req.email, req.identificacion);
     return { found: !!c, client: c ? this.clientMsg(c) : undefined };
@@ -74,7 +100,7 @@ export class IdentityService {
     const email = req.email.trim().toLowerCase();
     if (!EMAIL_RE.test(email)) throw badRequest('El correo del cliente no es válido.');
     const existing = await this.lookupClient(email, req.identificacion);
-    if (existing) return this.clientMsg(existing);
+    if (existing) return this.clientMsg(await this.completeClient(existing, req));
     const saved = await this.clients.save(
       this.clients.create({
         nombre: req.nombre.trim(),

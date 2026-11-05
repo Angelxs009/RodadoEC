@@ -1,4 +1,4 @@
-import { api, DECLINED_CARD, DRIVER, http, idem, OK_CARD, previewAndPay } from './helpers';
+import { api, DECLINED_CARD, DRIVER, holdAvailableCar, http, idem, OK_CARD, previewAndPay } from './helpers';
 
 /**
  * Pruebas de integración de extremo a extremo: golpean el API Gateway real y atraviesan los cuatro
@@ -193,6 +193,29 @@ describe('Clientes v3.1 (/api/v3/clientes)', () => {
     const byId = await post({ nombre: 'Otro', email: `otro-${stamp}@test.com`, identificacion });
     expect(byMail.body.client_id).toBe(clientId);
     expect(byId.body.client_id).toBe(clientId);
+  });
+
+  it('completa la cédula de un cliente que la reserva ya había registrado sin ella', async () => {
+    const mail = `tardio-${stamp}@test.com`;
+    const ident = `9${String(stamp).slice(-9)}`;
+    const ctx = await holdAvailableCar();
+    const order = await http('POST', '/api/v3/autos/orders/create', {
+      vehicle_id: ctx.car.vehicle_id,
+      pickup_date: '2028-03-10',
+      dropoff_date: '2028-03-13',
+      driver: { full_name: 'Sin Cedula', email: mail, phone: '0990000001', license_number: `L-${stamp}`, age: 30 },
+    }, idem());
+    expect(order.status).toBe(201);
+    await new Promise((r) => setTimeout(r, 800)); // el registro del conductor es asíncrono
+    const before = await http('GET', `/api/v3/clientes?email=${encodeURIComponent(mail)}`);
+    expect(before.status).toBe(200);
+    expect(before.body.identificacion).toBe('');
+    const post2 = await post({ nombre: 'Sin Cedula', email: mail, identificacion: ident });
+    expect(post2.body.client_id).toBe(before.body.client_id);
+    const byIdent = await http('GET', `/api/v3/clientes?identificacion=${ident}`);
+    expect(byIdent.status).toBe(200);
+    expect(byIdent.body.client_id).toBe(before.body.client_id);
+    await http('POST', `/api/v3/autos/orders/${order.body.order_id}/cancel`, { solicitante: 'ADMIN' }, idem());
   });
 
   it('200 con los datos al buscar por email o por identificación', async () => {
