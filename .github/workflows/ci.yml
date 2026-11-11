@@ -1,0 +1,163 @@
+name: CI
+
+# Pipeline en orden estricto: lint -> pruebas unitarias -> E2E -> verificación de contrato.
+# Cada job depende del anterior (needs), así que el pipeline se detiene en el primer fallo.
+on:
+  push:
+    branches: [main, microservicios]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: services
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  lint:
+    name: 1 · Lint (tipos TypeScript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: services/package-lock.json
+      - run: npm ci
+      - name: Verificación estática (tsc --noEmit)
+        run: npx tsc --noEmit -p tsconfig.json
+
+  unit:
+    name: 2 · Pruebas unitarias
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: services/package-lock.json
+      - run: npm ci
+      - run: npm run test:unit:cov
+
+  e2e:
+    name: 3 · Pruebas E2E (sistema completo + Postgres)
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rodadoec
+          POSTGRES_PASSWORD: rodadoec
+          POSTGRES_DB: rodadoec
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rodadoec"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://rodadoec:rodadoec@localhost:5432/rodadoec
+      DATABASE_SSL: 'false'
+      NODE_ENV: development
+      PORT: '3000'
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: rodadoec2026
+      ADMIN_JWT_SECRET: ci-admin-secret
+      CUSTOMER_JWT_SECRET: ci-customer-secret
+      GATEWAY_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: services/package-lock.json
+      - run: npm ci
+      - run: npm run build:all
+      - name: Levantar el sistema (4 servicios gRPC + gateway)
+        run: nohup npm run start:all > ../server.log 2>&1 &
+      - name: Esperar a que el gateway esté sano
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000/warmup > /dev/null; then echo "gateway listo"; exit 0; fi
+            sleep 3
+          done
+          echo "El gateway no arrancó"; cat ../server.log; exit 1
+      - name: Pruebas E2E del gateway v1
+        run: npx jest --config test/jest-integration.json --runInBand gateway.integration
+      - name: Log del servidor (si falló)
+        if: failure()
+        run: cat ../server.log
+
+  contract:
+    name: 4 · Verificación de contrato
+    needs: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rodadoec
+          POSTGRES_PASSWORD: rodadoec
+          POSTGRES_DB: rodadoec
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rodadoec"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://rodadoec:rodadoec@localhost:5432/rodadoec
+      DATABASE_SSL: 'false'
+      NODE_ENV: development
+      PORT: '3000'
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: rodadoec2026
+      ADMIN_JWT_SECRET: ci-admin-secret
+      CUSTOMER_JWT_SECRET: ci-customer-secret
+      GATEWAY_URL: http://localhost:3000
+      # Los ejemplos del contrato usan fechas ya vencidas.
+      ALLOW_PAST_DATES: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: services/package-lock.json
+      - run: npm ci
+      - name: Compatibilidad de contratos (OpenAPI, gRPC, GraphQL) contra la línea base
+        run: npm run check:contracts
+      - run: npm run build:all
+      - name: Levantar el sistema
+        run: nohup npm run start:all > ../server.log 2>&1 &
+      - name: Esperar a que el gateway esté sano
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000/warmup > /dev/null; then echo "gateway listo"; exit 0; fi
+            sleep 3
+          done
+          echo "El gateway no arrancó"; cat ../server.log; exit 1
+      - name: Conformidad de cada respuesta con autos-openapi-v3.yaml
+        run: npx jest --config test/jest-integration.json --runInBand v2-contract
+      - name: Log del servidor (si falló)
+        if: failure()
+        run: cat ../server.log

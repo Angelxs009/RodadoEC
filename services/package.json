@@ -16,6 +16,8 @@
     "start:booking": "node dist/apps/booking/main",
     "start:payments": "node dist/apps/payments/main",
     "start:identity": "node dist/apps/identity/main",
+    "test:unit": "jest --config test/jest-unit.json",
+    "test:unit:cov": "jest --config test/jest-unit.json --coverage",
     "test:integration": "jest --config test/jest-integration.json --runInBand",
     "check:contracts": "node ../contracts/check-compat.js",
     "build:all": "nest build all",
