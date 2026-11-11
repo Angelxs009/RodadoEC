@@ -134,8 +134,7 @@ jobs:
       ADMIN_JWT_SECRET: ci-admin-secret
       CUSTOMER_JWT_SECRET: ci-customer-secret
       GATEWAY_URL: http://localhost:3000
-      # Los ejemplos del contrato usan fechas ya vencidas.
-      ALLOW_PAST_DATES: 'true'
+      # ALLOW_PAST_DATES queda apagada: las pruebas de contrato esperan 422 INVALID_DATES con fechas pasadas.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
