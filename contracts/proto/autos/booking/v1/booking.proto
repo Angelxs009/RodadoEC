@@ -161,6 +161,7 @@ message Order {
   string delivered_at = 19;
   string returned_at = 20;
   RefundInfo refund = 21;        // presente solo si la orden se canceló
+  string source = 22;            // BOOKING (llegó por la API con la X-API-Key del nodo) | WEB (reserva en la web propia)
 }
 
 message PricingV2 {
@@ -199,6 +200,7 @@ message CreateOrderV2Request {
   string coverage_type = 8;   // BASICA | TOTAL
   DriverV2 driver = 9;
   string customer_id = 10;
+  string source = 11;         // BOOKING | WEB
 }
 
 message CancelResult {

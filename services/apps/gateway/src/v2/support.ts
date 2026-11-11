@@ -236,6 +236,11 @@ export function coverageOptions(v: any) {
 
 const orderStatus = (s: string) => s;
 
+/** Parte de fecha (YYYY-MM-DD, hora de Ecuador) de un datetime ISO con desfase. */
+function dateOf(datetime?: string): string | null {
+  return datetime ? datetime.slice(0, 10) : null;
+}
+
 export function orderToV2(o: any, base: string) {
   const cancelled = o.status === 'CANCELLED';
   const autoId = o.vehicle?.vehicle_id ?? '';
@@ -272,6 +277,8 @@ export function orderToV2(o: any, base: string) {
           }
         : {}),
     },
+    pickup_date: dateOf(o.route?.pickup?.datetime),
+    dropoff_date: dateOf(o.route?.dropoff?.datetime),
     codigo_reserva: o.locator,
     estado: status,
     moneda: o.currency,

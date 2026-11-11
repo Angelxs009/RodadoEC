@@ -2,12 +2,15 @@ import { HttpException, Inject, Injectable, Logger, OnModuleInit } from '@nestjs
 import { ClientGrpc } from '@nestjs/microservices';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes, randomUUID } from 'crypto';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import {
   bookingNotConfirmed,
   cancellationNotAllowed,
   carNoLongerAvailable,
+  blockedByVehicleState,
   computePricing,
+  conflictsWithOrders,
+  ecuadorMs,
   driverAgeRestriction,
   driverBelowVehicleMinimum,
   driverUnderage,
@@ -84,6 +87,7 @@ export function toOrderMsg(o: Order) {
     delivered_at: iso(o.delivered_at),
     returned_at: iso(o.returned_at),
     refund: o.refund ?? undefined,
+    source: o.source ?? 'WEB',
   };
 }
 
@@ -143,8 +147,11 @@ export class BookingService implements OnModuleInit {
       limit: req.maximum_results || 100,
     });
 
-    // Los reservables primero; los demás se muestran marcados como no disponibles.
-    const bookable = (v: any) => v.status === 'AVAILABLE' && driverAge >= v.min_driver_age;
+    // Disponibilidad POR FECHAS: un auto reservado solo está ocupado en las fechas de su reserva (+ limpieza).
+    const from = ecuadorMs(pickup.datetime);
+    const to = ecuadorMs(req.route.dropoff.datetime);
+    const freeIds = await this.freeVehicleIds(vehicles, from, to);
+    const bookable = (v: any) => freeIds.has(v.vehicle_id) && driverAge >= v.min_driver_age;
     const sorted = [...vehicles].sort((a, b) => Number(bookable(b)) - Number(bookable(a)));
 
     const days = daysBetween(pickup.datetime, req.route.dropoff.datetime);
@@ -157,7 +164,7 @@ export class BookingService implements OnModuleInit {
         vehicle_id: v.vehicle_id,
         price: Number((v.price_per_day * days).toFixed(2)),
         supplier_id: v.supplier_id,
-        available: v.status === 'AVAILABLE',
+        available: freeIds.has(v.vehicle_id),
         min_driver_age: v.min_driver_age,
         depot_id: v.depot_id,
       })),
@@ -172,7 +179,7 @@ export class BookingService implements OnModuleInit {
     const vehicle = cached?.vehicles.find((v) => v.vehicle_id === req.vehicle_id);
     if (!cached || !vehicle) throw carNoLongerAvailable(req.vehicle_id);
     this.assertDriverAge(vehicle, cached.driver_age);
-    await this.freshAvailableVehicle(req.vehicle_id);
+    await this.freshAvailableVehicle(req.vehicle_id, cached.route);
 
     const hold_id = randomUUID();
     this.cache.set(`hold:${hold_id}`, { vehicle_id: req.vehicle_id, search_token: req.search_token }, HOLD_TTL_MS);
@@ -185,7 +192,7 @@ export class BookingService implements OnModuleInit {
     if (!cached || !vehicle) throw carNoLongerAvailable(req.vehicle_id);
     if (req.hold_id && !this.cache.has(`hold:${req.hold_id}`)) throw carNoLongerAvailable(req.vehicle_id);
     this.assertDriverAge(vehicle, cached.driver_age);
-    await this.freshAvailableVehicle(req.vehicle_id);
+    await this.freshAvailableVehicle(req.vehicle_id, cached.route);
 
     const days = daysBetween(cached.route.pickup.datetime, cached.route.dropoff.datetime);
     const base_price = vehicle.price_per_day * days;
@@ -222,7 +229,7 @@ export class BookingService implements OnModuleInit {
     if (!preview) throw bookingNotConfirmed(req.order_preview_id);
 
     // No se cobra un auto que ya no está libre ni a un conductor que no cumple la edad mínima.
-    const vehicle = await this.freshAvailableVehicle(preview.vehicle_id);
+    const vehicle = await this.freshAvailableVehicle(preview.vehicle_id, preview.route);
     this.assertDriverAge(vehicle, preview.driver_age);
 
     // Si Pagos rechaza la tarjeta, el ProblemDetails (402 PAYMENT_DECLINED) viaja de vuelta tal cual.
@@ -304,15 +311,18 @@ export class BookingService implements OnModuleInit {
     deposit?: number;
     pricing?: { days: number; base: number; coverage: number; surcharge: number };
     v2?: boolean;
+    source?: string;
   }): Promise<Order> {
-    // Paso 1: reservar el auto (atómico). Si ya no está libre → compensar reembolsando el pago.
-    const { reserved } = await this.catalog.call<{ reserved: boolean }>('ReserveVehicle', { vehicle_id: p.vehicle.vehicle_id });
-    if (!reserved) {
+    // Paso 1: el auto debe estar libre EN LAS FECHAS de la reserva (la ocupación es por fechas, no global).
+    // Si ya no lo está → compensar reembolsando el pago.
+    const from = ecuadorMs(p.route?.pickup?.datetime);
+    const to = ecuadorMs(p.route?.dropoff?.datetime);
+    if (await this.conflictsOn(p.vehicle.vehicle_id, from, to)) {
       await this.payments.call('Refund', { payment_reference: p.paymentReference }).catch((e) =>
         this.logger.error(`Compensación fallida (reembolso) de ${p.paymentReference}: ${e.message}`),
       );
       throw p.v2
-        ? vehicleUnavailable(p.vehicle.vehicle_id, 'VEHICLE_ALREADY_RESERVED', `El vehículo ${p.vehicle.vehicle_id} acaba de ser reservado por otra orden.`)
+        ? vehicleUnavailable(p.vehicle.vehicle_id, 'VEHICLE_ALREADY_RESERVED', `El vehículo ${p.vehicle.vehicle_id} ya está reservado en esas fechas.`)
         : vehicleReserved(p.vehicle.vehicle_id);
     }
 
@@ -321,19 +331,21 @@ export class BookingService implements OnModuleInit {
     try {
       await this.payments.call('Consume', { payment_reference: p.paymentReference, order_id: orderId });
     } catch (err) {
-      await this.releaseVehicle(p.vehicle.vehicle_id);
       throw err;
     }
 
     // Paso 3: guardar la orden. Si falla → compensar liberando el auto y reembolsando el pago.
     let saved: Order;
     try {
-      saved = await this.orders.save(
+      saved = await this.saveIfFree(
+        p.vehicle.vehicle_id,
+        from,
+        to,
         this.orders.create({
           id: orderId,
           locator: await this.newLocator(),
           status: OrderStatus.CONFIRMED,
-          vehicle_details: { ...p.vehicle, status: 'RESERVED' },
+          vehicle_details: { ...p.vehicle },
           route_details: p.route,
           driver_details: p.driverDetails,
           extras: p.extras,
@@ -344,10 +356,10 @@ export class BookingService implements OnModuleInit {
           coverage_type: p.coverage ?? 'BASICA',
           deposit: p.deposit ?? 0,
           pricing: p.pricing ?? null,
+          source: p.source ?? 'WEB',
         }),
       );
     } catch (err) {
-      await this.releaseVehicle(p.vehicle.vehicle_id);
       await this.payments.call('Refund', { payment_reference: p.paymentReference }).catch(() => undefined);
       throw err;
     }
@@ -381,7 +393,8 @@ export class BookingService implements OnModuleInit {
     const age = req.driver?.age || 30;
     if (age < MIN_LEGAL_AGE) throw driverUnderage(age);
     if (age < vehicle.min_driver_age) throw driverBelowVehicleMinimum(vehicle.vehicle_id, vehicle.min_driver_age, age);
-    this.assertBookableV2(vehicle);
+    const dtIso = (date: string, time: string) => `${date}T${time || '10:00'}:00-05:00`;
+    await this.assertBookableV2(vehicle, new Date(dtIso(req.pickup_date, req.pickup_time)).getTime(), new Date(dtIso(req.dropoff_date, req.dropoff_time)).getTime());
 
     const days = rentalDays(req.pickup_date, req.dropoff_date);
     const coverage = normalizeCoverage(req.coverage_type);
@@ -424,6 +437,7 @@ export class BookingService implements OnModuleInit {
       deposit: pricing.deposit,
       pricing: { days: pricing.days, base: pricing.base, coverage: pricing.coverage, surcharge: pricing.surcharge },
       v2: true,
+      source: req.source === 'BOOKING' ? 'BOOKING' : 'WEB',
     });
     return toOrderMsg(saved);
   }
@@ -482,7 +496,8 @@ export class BookingService implements OnModuleInit {
     const saved = await this.orders.save(order);
 
     // Compensaciones: liberar el auto y reembolsar el pago (consistencia eventual si alguna falla).
-    await this.releaseVehicle(order.vehicle_details.vehicle_id);
+    // La reserva ya no marca al auto como RESERVED: solo se restituye si el check-in digital lo dejó LISTO_PARA_ENTREGAR.
+    if (order.checkin_at) await this.releaseReadyVehicle(order.vehicle_details.vehicle_id);
     await this.payments.call('RefundByOrder', { order_id: order.id }).catch((e) =>
       this.logger.error(`Reembolso de la orden ${order.id} pendiente: ${e.message}`),
     );
@@ -522,7 +537,7 @@ export class BookingService implements OnModuleInit {
       await this.orders.save(order);
       await this.catalog.call('TransitionVehicle', {
         vehicle_id: order.vehicle_details.vehicle_id,
-        from_statuses: ['RESERVED'],
+        from_statuses: ['AVAILABLE', 'RESERVED'],
         to_status: 'READY_FOR_DELIVERY',
       });
     }
@@ -547,7 +562,7 @@ export class BookingService implements OnModuleInit {
     }
     const moved = await this.catalog.call<{ changed: boolean }>('TransitionVehicle', {
       vehicle_id: order.vehicle_details.vehicle_id,
-      from_statuses: ['RESERVED', 'READY_FOR_DELIVERY'],
+      from_statuses: ['AVAILABLE', 'RESERVED', 'READY_FOR_DELIVERY'],
       to_status: 'DELIVERED',
       odometer_km: req.km_salida,
     });
@@ -586,13 +601,15 @@ export class BookingService implements OnModuleInit {
   async returnVehicle(req: { vehicle_id: string }) {
     const { vehicles } = await this.catalog.call<{ vehicles: any[] }>('GetVehicles', { vehicle_ids: [req.vehicle_id] });
     if (!vehicles[0]) throw notFound('Vehículo no encontrado', 'Vehículo "' + req.vehicle_id + '" no encontrado');
-    const result = await this.startCleaning(req.vehicle_id, ['RESERVED', 'READY_FOR_DELIVERY', 'DELIVERED']);
-
     const active = await this.orders
       .createQueryBuilder('o')
       .where("o.vehicle_details->>'vehicle_id' = :v", { v: req.vehicle_id })
       .andWhere('o.status IN (:...s)', { s: [OrderStatus.CONFIRMED, OrderStatus.DELIVERED] })
+      .orderBy('o.creation_date', 'ASC')
       .getOne();
+    // Con una orden vigente el auto sigue DISPONIBLE hasta la entrega (la reserva ya no lo marca RESERVED).
+    const result = await this.startCleaning(req.vehicle_id, ['RESERVED', 'READY_FOR_DELIVERY', 'DELIVERED', ...(active ? ['AVAILABLE'] : [])]);
+
     let order: Order | null = null;
     if (active) {
       active.status = OrderStatus.COMPLETED;
@@ -749,9 +766,10 @@ export class BookingService implements OnModuleInit {
    * Un auto que no se puede reservar responde 409 VEHICLE_UNAVAILABLE (el código que activa la compensación de
    * Saga en Booking); `reason` distingue cooldown de limpieza, mantenimiento y reservado/en uso.
    */
-  private assertBookableV2(vehicle: any) {
-    if (vehicle.status === 'AVAILABLE') return;
+  private async assertBookableV2(vehicle: any, from: number, to: number) {
     const id = vehicle.vehicle_id;
+    const mine = await this.activeOrdersOf([id]);
+    if (!blockedByVehicleState(vehicle, from, mine.length > 0) && !conflictsWithOrders(mine, from, to)) return;
     if (vehicle.status === 'CLEANING') {
       throw vehicleUnavailable(
         id,
@@ -762,16 +780,68 @@ export class BookingService implements OnModuleInit {
     if (vehicle.status === 'MAINTENANCE') {
       throw vehicleUnavailable(id, 'VEHICLE_IN_MAINTENANCE', `El vehículo ${id} está en mantenimiento preventivo.`);
     }
-    throw vehicleUnavailable(id, 'VEHICLE_ALREADY_RESERVED', `El vehículo ${id} ya está reservado o en uso.`);
+    throw vehicleUnavailable(id, 'VEHICLE_ALREADY_RESERVED', `El vehículo ${id} ya está reservado o en uso en esas fechas.`);
+  }
+
+  // ── Disponibilidad por fechas ──────────────────────────────────────────────
+  /** Órdenes vigentes (CONFIRMED / ENTREGADO) de los autos dados. */
+  private async activeOrdersOf(vehicleIds: string[]): Promise<Order[]> {
+    if (!vehicleIds.length) return [];
+    return this.orders
+      .createQueryBuilder('o')
+      .where("o.vehicle_details->>'vehicle_id' IN (:...ids)", { ids: vehicleIds })
+      .andWhere('o.status IN (:...s)', { s: [OrderStatus.CONFIRMED, OrderStatus.DELIVERED] })
+      .getMany();
+  }
+
+  private async conflictsOn(vehicleId: string, from: number, to: number, manager?: EntityManager): Promise<boolean> {
+    const repo = manager ? manager.getRepository(Order) : this.orders;
+    const mine = await repo
+      .createQueryBuilder('o')
+      .where("o.vehicle_details->>'vehicle_id' = :id", { id: vehicleId })
+      .andWhere('o.status IN (:...s)', { s: [OrderStatus.CONFIRMED, OrderStatus.DELIVERED] })
+      .getMany();
+    return conflictsWithOrders(mine, from, to);
+  }
+
+  /** Ids de los autos libres entre from y to (estado propio del auto + órdenes que se cruzan). */
+  private async freeVehicleIds(vehicles: any[], from: number, to: number): Promise<Set<string>> {
+    const orders = await this.activeOrdersOf(vehicles.map((v) => v.vehicle_id));
+    const free = new Set<string>();
+    for (const v of vehicles) {
+      const mine = orders.filter((o) => o.vehicle_details?.vehicle_id === v.vehicle_id);
+      if (!blockedByVehicleState(v, from, mine.length > 0) && !conflictsWithOrders(mine, from, to)) free.add(v.vehicle_id);
+    }
+    return free;
+  }
+
+  /** Guarda la orden bajo un candado por auto: dos reservas simultáneas en las mismas fechas no pueden pasar ambas. */
+  private async saveIfFree(vehicleId: string, from: number, to: number, order: Order): Promise<Order> {
+    return this.orders.manager.transaction(async (m) => {
+      await m.query('SELECT pg_advisory_xact_lock(hashtext($1))', [vehicleId]);
+      if (await this.conflictsOn(vehicleId, from, to, m)) {
+        throw vehicleUnavailable(vehicleId, 'VEHICLE_ALREADY_RESERVED', `El vehículo ${vehicleId} acaba de ser reservado por otra orden en esas fechas.`);
+      }
+      return m.save(order);
+    });
   }
 
   /** Consulta el estado actual del auto en Catálogo (la caché de búsqueda puede estar desactualizada). */
-  private async freshAvailableVehicle(vehicleId: string): Promise<any> {
+  private async freshAvailableVehicle(vehicleId: string, route?: any): Promise<any> {
     const { vehicles } = await this.catalog.call<{ vehicles: any[] }>('GetVehicles', { vehicle_ids: [vehicleId] });
     const v = vehicles[0];
     if (!v) throw carNoLongerAvailable(vehicleId);
-    if (v.status !== 'AVAILABLE') throw vehicleReserved(vehicleId);
+    const from = route ? ecuadorMs(route.pickup?.datetime) : Date.now();
+    const to = route ? ecuadorMs(route.dropoff?.datetime) : from;
+    if (!(await this.freeVehicleIds([v], from, to)).has(vehicleId)) throw vehicleReserved(vehicleId);
     return v;
+  }
+
+  /** Si el check-in digital dejó al auto LISTO_PARA_ENTREGAR y la reserva se cancela, vuelve a DISPONIBLE. */
+  private async releaseReadyVehicle(vehicleId: string) {
+    await this.catalog
+      .call('TransitionVehicle', { vehicle_id: vehicleId, from_statuses: ['READY_FOR_DELIVERY'], to_status: 'AVAILABLE' })
+      .catch((e) => this.logger.error(`Liberación pendiente del auto ${vehicleId}: ${e.message}`));
   }
 
   private async releaseVehicle(vehicleId: string) {

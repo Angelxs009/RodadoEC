@@ -29,6 +29,17 @@ Un cambio MAJOR **no muta** el contrato existente: se publica uno nuevo (`autos.
 | gRPC Identidad | `proto/autos/identity/v1/identity.proto` | v1 |
 | GraphQL federado (subgrafo) | `graphql/autos.graphql` | 1.0.0 |
 
+## 3.2.0 (REST v3.2, MINOR) — disponibilidad por fechas y aviso solo de reservas de Booking
+
+Cambios compatibles hacia atrás (campos nuevos opcionales); a pedido del Booking.
+
+- **Disponibilidad por fechas:** una reserva (CONFIRMED) o entrega en curso (ENTREGADO) ocupa al auto solo entre su recogida y su devolución más 2 h de limpieza. `POST /autos/search`, `GET /autos` y la creación de reservas calculan la disponibilidad con esas ventanas; ya no basta que el auto esté "reservado" para ocultarlo en todas las fechas. Un cruce de fechas sigue respondiendo `409 VEHICLE_UNAVAILABLE` (`reason: VEHICLE_ALREADY_RESERVED`). Mantenimiento y limpieza vigente siguen bloqueando.
+- **Estado del auto:** `RESERVADO` / `LISTO_PARA_ENTREGAR` se muestran solo mientras la reserva está en curso; una reserva futura deja al auto `DISPONIBLE`. `ENTREGADO`, `EN_LIMPIEZA` y `EN_MANTENIMIENTO` no cambian.
+- **Orden:** la respuesta agrega los campos opcionales `pickup_date` y `dropoff_date` (YYYY-MM-DD).
+- **Origen de la reserva:** solo las reservas creadas con la `X-API-Key` del nodo se consideran de Booking (gRPC `Order.source` = `BOOKING`, `CreateOrderV2Request.source`; MINOR). `POST /autos/orders/create`, `POST /autos/reservas` y `GET /autos/orders` piden la `X-API-Key` (o un JWT) cuando el nodo tiene clave configurada.
+- **Aviso de entrega:** `POST /autos/orders/{id}/checkin-entrega` solo avisa al Booking de las reservas con `source=BOOKING`, usando la `X-API-Key` propia del nodo (`NODE_API_KEY`), `estado: CONFIRMADO_ASISTIDO` y el PNR como `external_order_id`. Las reservas hechas en la web propia devuelven `booking_sync.notified=false` sin llamar a Booking.
+- Configuración: `NODE_API_KEY` (una sola clave: la que Booking envía a nuestra API y la que nosotros enviamos al avisar). `BOOKING_API_KEY` se conserva como alias; `BOOKING_CHECKIN_API_KEY` ya no se usa.
+
 ## 3.1.0 (REST v3.1, MINOR) — clientes y aviso de entrega al Booking
 
 Solo se agregaron endpoints y un campo opcional; nada de lo publicado en 3.0.0 cambió (compatible hacia atrás). Requerimiento de cátedra.

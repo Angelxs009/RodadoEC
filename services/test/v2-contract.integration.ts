@@ -9,8 +9,10 @@ import { CONTRACT_OPERATIONS, exercisedOperations, schemaErrors, v2 } from './co
  */
 const idem = () => ({ 'Idempotency-Key': randomUUID() });
 const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
-const PICKUP = day(30);
-const DROPOFF = day(33);
+// Base aleatoria por ejecución: las reservas de corridas anteriores (ya no se liberan por estado) no chocan con estas fechas.
+const BASE = 30 + Math.floor(Math.random() * 300);
+const PICKUP = day(BASE);
+const DROPOFF = day(BASE + 3);
 
 const driver = (extra: Record<string, unknown> = {}) => ({
   full_name: 'Carlos Andrés Zambrano',
@@ -179,10 +181,32 @@ describe('Reservas: ciclo completo con máquina de estados', () => {
     expect(replay.headers.get('idempotent-replayed')).toBe('true');
   });
 
-  it('el auto queda RESERVADO y desaparece de las búsquedas; una segunda reserva da 409', async () => {
-    expect((await v2('GET', '/autos/{id}', { id: car })).body.estado).toBe('RESERVADO');
+  it('la orden trae pickup_date y dropoff_date', async () => {
+    const o = await v2('GET', '/autos/orders/{orderId}', { orderId: pnr });
+    expect(o.body.pickup_date).toBe(PICKUP);
+    expect(o.body.dropoff_date).toBe(DROPOFF);
+  });
+
+  it('el auto se bloquea SOLO en las fechas de la reserva (+ limpieza): otras fechas siguen libres; una segunda reserva en esas fechas da 409', async () => {
+    // Una reserva futura no cambia el estado del auto: RESERVADO vale solo mientras la reserva está en curso.
+    expect((await v2('GET', '/autos/{id}', { id: car })).body.estado).toBe('DISPONIBLE');
+    // El auto puede estar en cualquiera de las 3 ciudades: se busca en todas.
+    const buscar = async (pickup: string, dropoff: string) => {
+      const data: any[] = [];
+      for (const pickup_location of ['UIO', 'GYE', 'CUE']) {
+        const r = await v2('POST', '/autos/search', {}, { body: { pickup_location, pickup_date: pickup, pickup_time: '10:00', dropoff_date: dropoff, dropoff_time: '10:00', driver_age: 32 } });
+        data.push(...r.body.data);
+      }
+      return { body: { data } };
+    };
+    const mismas = await buscar(PICKUP, DROPOFF);
+    expect(mismas.body.data.map((c: any) => c.vehicle_id)).not.toContain(car);
+    const traslapadas = await buscar(day(BASE + 2), day(BASE + 5));
+    expect(traslapadas.body.data.map((c: any) => c.vehicle_id)).not.toContain(car);
+    const otras = await buscar(day(BASE + 10), day(BASE + 12));
+    expect(otras.body.data.map((c: any) => c.vehicle_id)).toContain(car);
     const lista = await v2('GET', '/autos', {}, { query: { limit: 500 } });
-    expect(lista.body.data.map((c: any) => c.vehicle_id)).not.toContain(car);
+    expect(lista.body.data.map((c: any) => c.vehicle_id)).toContain(car);
     const otra = await v2('POST', '/autos/orders/create', {}, { body: reserva(car), headers: idem() });
     expect(otra.status).toBe(409);
     expect(otra.body.code).toBe('VEHICLE_UNAVAILABLE');
@@ -261,7 +285,8 @@ describe('Reservas: ciclo completo con máquina de estados', () => {
     expect(flota.segundos_restantes_cooldown).toBeGreaterThan(7000);
     expect(flota.segundos_restantes_cooldown).toBeLessThanOrEqual(7200);
 
-    const r = await v2('POST', '/autos/orders/create', {}, { body: reserva(car), headers: idem() });
+    // La limpieza bloquea solo las fechas que se cruzan con ella: una recogida de hoy cae dentro del cooldown.
+    const r = await v2('POST', '/autos/orders/create', {}, { body: reserva(car, { pickup_date: new Date(Date.now() - 5 * 3_600_000).toISOString().slice(0, 10), pickup_time: '00:00', dropoff_date: day(2) }), headers: idem() });
     expect(r.status).toBe(409);
     expect(r.body.code).toBe('VEHICLE_UNAVAILABLE'); // único código que activa la compensación LIFO en Booking
     expect(r.body.reason).toBe('VEHICLE_IN_CLEANING_COOLDOWN');

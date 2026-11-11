@@ -97,6 +97,10 @@ export class Order {
 
   @Column({ type: 'jsonb', nullable: true })
   refund: { refund_id: string; amount: number; currency: string; percentage: number; status: string } | null;
+
+  /** Origen de la reserva: BOOKING (API con la X-API-Key del nodo) o WEB (web propia). Solo BOOKING se avisa al entregar. */
+  @Column({ type: 'varchar', length: 10, default: 'WEB' })
+  source: string;
 }
 
 /** Transactional Outbox: cada evento de dominio se asienta aquí como CloudEvent y se publica por GET /autos/eventos. */

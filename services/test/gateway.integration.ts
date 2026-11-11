@@ -83,14 +83,14 @@ describe('Saga de reserva (Reservas → Catálogo + Pagos)', () => {
     expect(replay.body.order_id).toBe(order.order_id);
     expect(replay.headers.get('idempotent-replayed')).toBe('true');
 
-    // El auto queda RESERVED y no admite otro hold.
+    // El auto queda ocupado en las fechas de la reserva (no admite otro hold), pero su estado no cambia para todas las fechas.
     const details = await api('POST', '/details', {});
-    expect(details.body.data.find((v: any) => v.vehicle_id === ctx.car.vehicle_id).status).toBe('RESERVED');
+    expect(details.body.data.find((v: any) => v.vehicle_id === ctx.car.vehicle_id).status).toBe('AVAILABLE');
     const again = await api('POST', '/orders/hold', { vehicle_id: ctx.car.vehicle_id, search_token: ctx.token });
     expect(again.status).toBe(409);
     expect(again.body.code).toBe('CAR_NO_LONGER_AVAILABLE');
 
-    // Cancelar compensa: el auto vuelve a AVAILABLE.
+    // Cancelar compensa: las fechas se liberan.
     const cancel = await api('POST', `/orders/${order.order_id}/cancel`, undefined, idem());
     expect(cancel.status).toBe(200);
     const after = await api('POST', '/details', {});

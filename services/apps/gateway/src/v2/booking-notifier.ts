@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CORRELATION_HEADER, currentCorrelationId } from '@autos/common';
 import { Backends } from '../backends';
+import { nodeApiKey } from '../common/auth';
 
 const DEADLINE_MS = 8000;
 
@@ -41,14 +42,18 @@ export class BookingNotifier {
 
   async notifyDelivery(order: any, opts: { adminId?: string; observaciones?: string }) {
     const base = (process.env.BOOKING_CORE_URL ?? 'https://booking-core-api.azurewebsites.net').replace(/\/$/, '');
-    const apiKey = process.env.BOOKING_CHECKIN_API_KEY ?? process.env.BOOKING_API_KEY;
+    const apiKey = nodeApiKey();
     const externalId = order.locator;
     const url = `${base}/api/v3/reservas/${encodeURIComponent(externalId)}/checkin`;
     // El conductor se registra como cliente aunque el aviso no pueda salir (así existe en nuestro sistema sin duplicarse).
     const clientId = await this.clientIdOf(order.driver_details);
+    // Solo se avisa de las reservas que llegaron desde Booking (creadas por la API con nuestra X-API-Key).
+    if (order.source !== 'BOOKING') {
+      return { notified: false, client_id: clientId, reason: 'Reserva creada en la web propia: no se avisa a Booking' };
+    }
     if (!apiKey) {
-      this.logger.warn(`Check-in de ${externalId} sin notificar a Booking: falta BOOKING_API_KEY.`);
-      return { notified: false, client_id: clientId, reason: 'BOOKING_API_KEY no configurada' };
+      this.logger.warn(`Check-in de ${externalId} sin notificar a Booking: falta NODE_API_KEY.`);
+      return { notified: false, client_id: clientId, reason: 'NODE_API_KEY no configurada' };
     }
     const body = {
       external_order_id: externalId,

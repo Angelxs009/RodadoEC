@@ -130,7 +130,7 @@ GATEWAY_URL=http://localhost:3000 npm run test:integration
 | `GRPC_TLS=true`, `GRPC_ON_PORT=true` | quien llama / servicios | Solo para el despliegue de 5 servicios separados (`render.distribuido.yaml`); **no funcionan en Render** (ver abajo) |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | identity | Credenciales del administrador |
 | `ADMIN_JWT_SECRET`, `CUSTOMER_JWT_SECRET` | gateway **e** identity (iguales) | Firma/verificación de JWT |
-| `AUTH_ENFORCE_V2`, `BOOKING_API_KEY` | gateway | `true` exige JWT o `X-API-Key` en las rutas protegidas del contrato v2; `BOOKING_API_KEY` es la clave M2M |
+| `AUTH_ENFORCE_V2`, `NODE_API_KEY` | gateway | `true` exige JWT o `X-API-Key` en las rutas protegidas del contrato v2; `NODE_API_KEY` es la clave del nodo (alias: `BOOKING_API_KEY`): Booking la envía a nuestra API, y las reservas que llegan con ella se avisan a Booking al entregar el auto |
 | `RABBITMQ_URL`, `KAFKA_BROKERS`, `RABBITMQ_EXCHANGE`, `KAFKA_TOPIC` | booking | Brokers del agregador (vacío = desactivado; exchange `booking.events` y topic `topic-ordenes-b2b` por defecto) |
 | `INVENTORY_GRPC_URL`, `INVENTORY_GRPC_TLS`, `INVENTORY_SYNC_ON_START` | booking | Servicio de stock de Booking Prototipo por gRPC (vacío = desactivado) |
 | `INVENTORY_REST_URL`, `INVENTORY_REST_API_KEY` | booking | **Respaldo REST del stock** (p. ej. `https://rda1-backend-integracion-sistemas.onrender.com/api/v3/inventory/stock`): se usa si gRPC falla o si no hay `INVENTORY_GRPC_URL` (desde Render no se llega a gRPC). Apagado por defecto |

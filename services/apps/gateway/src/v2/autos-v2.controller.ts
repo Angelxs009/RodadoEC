@@ -3,12 +3,12 @@ import {
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import {
-  driverUnderage, InvalidParam, invalidParams, MIN_LEGAL_AGE, needsAgeSurcharge, normalizeCoverage, notFound, rentalDays, SURCHARGE_PER_DAY,
+  driverUnderage, ecuadorMs, effectiveStatus, InvalidParam, invalidParams, MIN_LEGAL_AGE, isFreeForDates, needsAgeSurcharge, normalizeCoverage, notFound, rentalDays, SURCHARGE_PER_DAY,
 } from '@autos/common';
 import { randomUUID } from 'crypto';
 import { Backends } from '../backends';
 import { BookingNotifier } from './booking-notifier';
-import { V2AccessGuard, V2Roles } from '../common/auth';
+import { ApiKeyRequiredGuard, hasNodeApiKey, V2AccessGuard, V2Roles } from '../common/auth';
 import { IdempotencyInterceptor, IdempotencyKeyGuard } from '../common/idempotency';
 import {
   CATEGORIES, CatalogData, checkTrip, coverageOptions, cooldownResponse, fleetItem, isDate, isEmail, isInt, isText, locationMatches,
@@ -52,6 +52,17 @@ export class AutosV2Controller {
       }
       throw err;
     }
+  }
+
+  /** Órdenes vigentes (CONFIRMED / ENTREGADO) para calcular la ocupación por fechas. */
+  private async activeOrders(): Promise<any[]> {
+    const r = await this.backends.booking.call<any>('ListOrders', {});
+    return r.orders ?? [];
+  }
+
+  /** El auto con el estado que se muestra: RESERVADO / LISTO_PARA_ENTREGAR solo mientras la reserva está en curso. */
+  private shown(v: any, orders: any[], now = Date.now()) {
+    return { ...v, status: effectiveStatus(v, orders, now) };
   }
 
   private vehicleOr404(cat: CatalogData, id: string) {
@@ -193,10 +204,12 @@ export class AutosV2Controller {
     throwIfInvalid(bad);
 
     const cat = await this.catalogData(res);
+    const now = Date.now();
+    const orders = await this.activeOrders();
     const matches = cat.vehicles.filter(
-      (v) => v.status === 'AVAILABLE' && (category === 'ALL' || categoryOf(v) === category) && (transmission === 'ALL' || transmissionOf(v) === transmission),
+      (v) => isFreeForDates(v, orders, now, now) && (category === 'ALL' || categoryOf(v) === category) && (transmission === 'ALL' || transmissionOf(v) === transmission),
     );
-    return { total: matches.length, limit, data: matches.slice(0, limit).map((v) => vehicleCard(v, cat)) };
+    return { total: matches.length, limit, data: matches.slice(0, limit).map((v) => vehicleCard(this.shown(v, orders, now), cat)) };
   }
 
   @Post('search')
@@ -224,10 +237,14 @@ export class AutosV2Controller {
       ]);
     }
     const days = rentalDays(b.pickup_date, b.dropoff_date);
-    // Excluye los autos que no se pueden rentar: RESERVADO, ENTREGADO, EN_MANTENIMIENTO y EN_LIMPIEZA (cooldown de 2 h).
+    // Disponibilidad POR FECHAS: un auto reservado/entregado solo se excluye si su reserva (+ 2 h de limpieza) se cruza
+    // con las fechas pedidas; también se excluyen EN_MANTENIMIENTO y EN_LIMPIEZA vigente.
+    const from = ecuadorMs(`${b.pickup_date}T${b.pickup_time}`);
+    const to = ecuadorMs(`${b.dropoff_date}T${b.dropoff_time}`);
+    const orders = await this.activeOrders();
     const found = cat.vehicles.filter(
       (v) =>
-        v.status === 'AVAILABLE' &&
+        isFreeForDates(v, orders, from, to) &&
         v.min_driver_age <= age &&
         locationMatches(v, loc, cat.depots) &&
         (category === 'ALL' || categoryOf(v) === category) &&
@@ -251,12 +268,13 @@ export class AutosV2Controller {
   @Get('flota')
   async flota(@Res({ passthrough: true }) res: any) {
     const cat = await this.catalogData(res);
-    return cat.vehicles.map(fleetItem);
+    const orders = await this.activeOrders();
+    return cat.vehicles.map((v) => fleetItem(this.shown(v, orders)));
   }
 
   // ══ Reservas ═══════════════════════════════════════════════════════════════
   @Get('orders')
-  @UseGuards(V2AccessGuard)
+  @UseGuards(V2AccessGuard, ApiKeyRequiredGuard)
   async listOrders(@Req() req: any) {
     const r = await this.backends.booking.call<any>('ListOrders', {});
     return r.orders.map((o: any) => orderToV2(this.shape(o), this.base(req)));
@@ -264,7 +282,7 @@ export class AutosV2Controller {
 
   @Post('orders/create')
   @HttpCode(HttpStatus.CREATED)
-  @UseGuards(V2AccessGuard, IdempotencyKeyGuard)
+  @UseGuards(V2AccessGuard, ApiKeyRequiredGuard, IdempotencyKeyGuard)
   @UseInterceptors(IdempotencyInterceptor)
   createOrder(@Req() req: any, @Body() b: any, @Res({ passthrough: true }) res: any) {
     return this.create(req, b, res);
@@ -273,7 +291,7 @@ export class AutosV2Controller {
   /** Alias de compatibilidad de /autos/orders/create. */
   @Post('reservas')
   @HttpCode(HttpStatus.CREATED)
-  @UseGuards(V2AccessGuard, IdempotencyKeyGuard)
+  @UseGuards(V2AccessGuard, ApiKeyRequiredGuard, IdempotencyKeyGuard)
   @UseInterceptors(IdempotencyInterceptor)
   createReserva(@Req() req: any, @Body() b: any, @Res({ passthrough: true }) res: any) {
     return this.create(req, b, res);
@@ -340,6 +358,8 @@ export class AutosV2Controller {
         flight_number: norm.flight ?? '',
       },
       customer_id: customerId,
+      // Solo las reservas que llegan con la X-API-Key del nodo son de Booking (y solo esas se avisan al entregar).
+      source: hasNodeApiKey(req) ? 'BOOKING' : 'WEB',
     });
     // Contrato v3.1: el conductor de la reserva queda registrado como cliente (sin duplicarse); no bloquea la reserva.
     void this.notifier.clientIdOf(order.driver_details).catch(() => undefined);
@@ -468,7 +488,7 @@ export class AutosV2Controller {
   @Get(':id')
   async detail(@Param('id') id: string, @Res({ passthrough: true }) res: any) {
     const cat = await this.catalogData(res);
-    return vehicleCard(this.vehicleOr404(cat, id), cat);
+    return vehicleCard(this.shown(this.vehicleOr404(cat, id), await this.activeOrders()), cat);
   }
 
   @Post(':id/devolucion')

@@ -93,6 +93,33 @@ export const V2Roles = (...roles: V2Role[]) => SetMetadata(V2_ROLES_KEY, roles);
 export const enforceV2 = () => flag('AUTH_ENFORCE_V2');
 
 /**
+ * X-API-Key de NUESTRO nodo (la misma que se le entrega a Booking): Booking la envía al llamar a esta API y
+ * nosotros la enviamos al avisarle una entrega. NODE_API_KEY manda; BOOKING_API_KEY se conserva como alias.
+ */
+export const nodeApiKey = (): string => process.env.NODE_API_KEY || process.env.BOOKING_API_KEY || '';
+
+/** ¿La petición trae la X-API-Key de nuestro nodo? (así se reconoce una reserva que llegó desde Booking). */
+export const hasNodeApiKey = (req: any): boolean => {
+  const expected = nodeApiKey();
+  return !!expected && req?.headers?.['x-api-key'] === expected;
+};
+
+/**
+ * Exige la X-API-Key del nodo (o un JWT válido) en /autos/orders. Si el nodo aún no tiene clave configurada no
+ * bloquea (desarrollo local y pruebas), pero la reserva no se considerará de Booking.
+ */
+@Injectable()
+export class ApiKeyRequiredGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    if (context.getType<string>() !== 'http') return true;
+    if (!nodeApiKey()) return true;
+    const req = context.switchToHttp().getRequest();
+    if (hasNodeApiKey(req) || req.principal) return true;
+    throw unauthorized('Falta la clave de API del nodo (cabecera X-API-Key) o un JWT válido.');
+  }
+}
+
+/**
  * Guard de las rutas protegidas del contrato v2.
  *  · Autenticación: JWT válido (Authorization: Bearer) o clave M2M (X-API-Key = BOOKING_API_KEY).
  *  · Rol: el del JWT (ADMIN→ADMIN, CUSTOMER→CLIENTE) o, con clave M2M, el de la cabecera X-Role.
@@ -109,8 +136,7 @@ export class V2AccessGuard implements CanActivate {
     const req = context.switchToHttp().getRequest();
     const roles = this.reflector.getAllAndOverride<V2Role[] | undefined>(V2_ROLES_KEY, [context.getHandler(), context.getClass()]) ?? [];
 
-    const expectedKey = process.env.BOOKING_API_KEY;
-    const apiKeyOk = !!expectedKey && req.headers['x-api-key'] === expectedKey;
+    const apiKeyOk = hasNodeApiKey(req);
     const principal: Principal | null | undefined = req.principal;
     const authenticated = apiKeyOk || !!principal;
 

@@ -84,6 +84,7 @@ services:
       AUTH_ENFORCE_V2: ${AUTH_ENFORCE_V2:-false}
       ALLOW_PAST_DATES: ${ALLOW_PAST_DATES:-false}
       BOOKING_API_KEY: ${BOOKING_API_KEY:-}
+      NODE_API_KEY: ${NODE_API_KEY:-}
     depends_on: [catalog, booking, payments, identity]
 
   # ── Brokers opcionales: docker compose --profile brokers up ───────────────────
