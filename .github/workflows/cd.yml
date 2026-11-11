@@ -1,0 +1,93 @@
+name: CD
+
+# Despliegue continuo a Azure App Service (https://rodadoec-api.azurewebsites.net).
+# Solo corre cuando el CI terminó en VERDE sobre la rama microservicios (o a mano con "Run workflow").
+# Requiere el secreto AZURE_WEBAPP_PUBLISH_PROFILE (Portal de Azure > rodadoec-api > Descargar perfil de publicación).
+# Sin el secreto, el job se salta y deja un aviso: no falla ni toca producción.
+# Render y Vercel ya se redespliegan solos con cada push (integración nativa), no pasan por este flujo.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [microservicios]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-azure
+  cancel-in-progress: false
+
+env:
+  AZURE_WEBAPP_NAME: rodadoec-api
+  NODE_VERSION: '22'
+
+jobs:
+  deploy:
+    name: Desplegar en Azure App Service
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      PUBLISH_PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+    steps:
+      - name: Verificar que existe el secreto de publicación
+        id: guard
+        run: |
+          if [ -z "$PUBLISH_PROFILE" ]; then
+            echo "::warning::Falta el secreto AZURE_WEBAPP_PUBLISH_PROFILE: no se despliega."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.guard.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.ready == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: services/package-lock.json
+
+      - name: Compilar el sistema (todos los servicios + gateway)
+        if: steps.guard.outputs.ready == 'true'
+        working-directory: services
+        run: |
+          npm ci
+          npm run build:all
+
+      - name: Armar el paquete (dist + dependencias de producción + contratos)
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          mkdir -p stage/services
+          cp -r services/dist services/package.json services/package-lock.json stage/services/
+          cp -r contracts stage/contracts
+          (cd stage/services && npm ci --omit=dev)
+          (cd stage && zip -qr ../package.zip .)
+          ls -lh package.zip
+
+      - name: Desplegar a Azure App Service
+        if: steps.guard.outputs.ready == 'true'
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: package.zip
+
+      - name: Prueba de humo (salud de la API desplegada)
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          # El zip tarda en descomprimirse; se reintenta hasta ~10 minutos.
+          for i in $(seq 1 40); do
+            if curl -sf "https://${AZURE_WEBAPP_NAME}.azurewebsites.net/api/v3/autos/health" | grep -q HEALTHY; then
+              echo "API desplegada y sana"; exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::La API no respondió sana tras el despliegue"; exit 1
