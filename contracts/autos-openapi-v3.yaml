@@ -592,6 +592,79 @@ paths:
         '500': *id004
         '400': *id007
         '409': *id008
+  /autos/orders/{id}/contratos-anexos:
+    post:
+      tags:
+      - Autos - Flota y Operaciones Mostrador v2
+      summary: Crear un contrato anexo de mostrador (extras, upgrades o días adicionales)
+      description: 'Regla de mostrador: cuando el cliente pide al retirar extras (GPS, silla
+        de bebé, conductor adicional), un auto más grande o días adicionales, la reserva
+        original NO se modifica en caliente. Esos cobros se gestionan como un contrato anexo
+        independiente para no desfasar la orden de Booking ni la facturación SRI.
+
+        Solo aplica a órdenes CONFIRMED o ENTREGADO. La orden original conserva su total.
+
+        '
+      parameters:
+      - *id006
+      - name: id
+        in: path
+        required: true
+        description: ID de la orden o código PNR
+        schema:
+          type: string
+        example: CAR7849B
+      - *id003
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContratoAnexoRequestV3'
+      responses:
+        '201':
+          description: Contrato anexo creado y cobrado en mostrador
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContratoAnexoV3'
+        '404':
+          $ref: '#/components/responses/ProblemDetails404'
+        '401': *id001
+        '403': *id002
+        '500': *id004
+        '400': *id007
+        '409': *id008
+    get:
+      tags:
+      - Autos - Flota y Operaciones Mostrador v2
+      summary: Listar los contratos anexos de una orden
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID de la orden o código PNR
+        schema:
+          type: string
+        example: CAR7849B
+      - *id003
+      responses:
+        '200':
+          description: Contratos anexos de la orden
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ContratoAnexoV3'
+        '404':
+          $ref: '#/components/responses/ProblemDetails404'
+        '401': *id001
+        '403': *id002
+        '500': *id004
   /autos/orders/{id}/checkin-devolucion:
     post:
       tags:
@@ -1506,6 +1579,77 @@ components:
         mensaje:
           type: string
           example: Llaves entregadas al conductor. Auto en tránsito (Fase ENTREGADO).
+    ContratoAnexoRequestV3:
+      type: object
+      required:
+      - conceptos
+      properties:
+        conceptos:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+            - descripcion
+            - precio_unitario
+            properties:
+              descripcion:
+                type: string
+                example: GPS (2 días)
+              precio_unitario:
+                type: number
+                example: 5
+              cantidad:
+                type: integer
+                minimum: 1
+                example: 2
+        operador:
+          type: string
+          example: operador-mostrador
+        observaciones:
+          type: string
+    ContratoAnexoV3:
+      type: object
+      properties:
+        contrato_id:
+          type: string
+          example: ANX-1A2B3C
+        pnr:
+          type: string
+          example: CAR7849B
+        estado:
+          type: string
+          example: COBRADO_EN_MOSTRADOR
+        conceptos:
+          type: array
+          items:
+            type: object
+            properties:
+              descripcion:
+                type: string
+              precio_unitario:
+                type: number
+              cantidad:
+                type: integer
+        total:
+          type: number
+        moneda:
+          type: string
+          example: USD
+        operador:
+          type: string
+          nullable: true
+        observaciones:
+          type: string
+          nullable: true
+        fecha:
+          type: string
+          format: date-time
+        total_orden_original:
+          type: number
+          description: Total de la orden original, que no cambia.
+        mensaje:
+          type: string
     CheckinDevolucionRequestV2:
       type: object
       required:

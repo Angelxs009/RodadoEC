@@ -199,3 +199,40 @@ export class WebhookDelivery {
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 }
+
+/** Contrato anexo de mostrador: cobros adicionales independientes de la orden original (regla de la catedra RDA2). */
+@Entity('annex_contracts')
+export class AnnexContract {
+  @PrimaryColumn('uuid')
+  id: string;
+
+  @Column({ type: 'varchar', length: 20, unique: true })
+  code: string;
+
+  @Column('uuid')
+  order_id: string;
+
+  @Column({ type: 'varchar', length: 30 })
+  order_locator: string;
+
+  @Column({ type: 'jsonb' })
+  items: { description: string; unit_price: number; quantity: number }[];
+
+  @Column('numeric', { precision: 10, scale: 2, transformer: new NumericTransformer() })
+  total: number;
+
+  @Column({ type: 'varchar', length: 3 })
+  currency: string;
+
+  @Column({ type: 'varchar', length: 30, default: 'COBRADO_EN_MOSTRADOR' })
+  status: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  operator: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  notes: string | null;
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  created_at: Date;
+}

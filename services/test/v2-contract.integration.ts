@@ -265,6 +265,22 @@ describe('Reservas: ciclo completo con máquina de estados', () => {
     expect(r.body.detail).toMatch(/ya fue retirado/);
   });
 
+  it('contrato anexo de mostrador: se cobra aparte y la orden original NO cambia', async () => {
+    const antes = (await v2('GET', '/autos/orders/{orderId}', { orderId: pnr })).body;
+    const vacio = await v2('POST', '/autos/orders/{id}/contratos-anexos', { id: pnr }, { body: { conceptos: [] }, headers: idem() });
+    expect(vacio.status).toBe(400);
+    const r = await v2('POST', '/autos/orders/{id}/contratos-anexos', { id: pnr }, { body: { conceptos: [{ descripcion: 'GPS (2 días)', precio_unitario: 5, cantidad: 2 }, { descripcion: 'Upgrade a SUV', precio_unitario: 20 }], operador: 'mostrador-1' }, headers: idem() });
+    expect(r.status).toBe(201);
+    expect(r.body.contrato_id).toMatch(/^ANX-/);
+    expect(r.body.pnr).toBe(pnr);
+    expect(r.body.total).toBe(30);
+    const despues = (await v2('GET', '/autos/orders/{orderId}', { orderId: pnr })).body;
+    expect(JSON.stringify(despues.total_price)).toBe(JSON.stringify(antes.total_price));
+    const lista = await v2('GET', '/autos/orders/{id}/contratos-anexos', { id: pnr });
+    expect(lista.status).toBe(200);
+    expect(lista.body.data.map((c: any) => c.contrato_id)).toContain(r.body.contrato_id);
+  });
+
   it('POST /autos/orders/{id}/checkin-devolucion: odómetro, km recorridos y cooldown de 2 h', async () => {
     const menos = await v2('POST', '/autos/orders/{id}/checkin-devolucion', { id: pnr }, { body: { km_retorno: 100 }, headers: idem() });
     expect(menos.status).toBe(400); // el odómetro de retorno no puede ser menor que el de salida
@@ -275,6 +291,11 @@ describe('Reservas: ciclo completo con máquina de estados', () => {
     expect(r.body.km_recorridos).toBe(450);
     expect(r.body.cooldown.estado).toBe('EN_LIMPIEZA');
     expect(r.body.cooldown.cooldown_horas).toBe(2);
+  });
+
+  it('contrato anexo: una orden completada o cancelada ya no admite anexos (409)', async () => {
+    const r = await v2('POST', '/autos/orders/{id}/contratos-anexos', { id: pnr }, { body: { conceptos: [{ descripcion: 'GPS', precio_unitario: 5 }] }, headers: idem() });
+    expect(r.status).toBe(409);
   });
 
   it('cooldown: el auto está EN_LIMPIEZA, fuera de resultados, con cronómetro en la flota y reservarlo da 409 VEHICLE_IN_CLEANING_COOLDOWN', async () => {
@@ -494,6 +515,6 @@ describe('Cobertura total del contrato', () => {
   it('las pruebas ejercitaron TODAS las operaciones que define autos-openapi-v3.yaml', () => {
     const faltan = CONTRACT_OPERATIONS.filter((op) => !exercisedOperations().has(op));
     expect(faltan).toEqual([]);
-    expect(CONTRACT_OPERATIONS.length).toBe(19);
+    expect(CONTRACT_OPERATIONS.length).toBe(21);
   });
 });

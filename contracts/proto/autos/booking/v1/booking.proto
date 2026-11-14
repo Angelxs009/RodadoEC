@@ -44,6 +44,9 @@ service BookingService {
   rpc SetPromoContract(PromoContract) returns (PromoContract);
   // Sincronización masiva del stock de la flota hacia Booking Prototipo (inventory.StreamInventoryChanges).
   rpc SyncInventory(autos.common.v1.Empty) returns (SyncResult);
+  // Contrato anexo de mostrador: extras, upgrades o dias extra se cobran aparte, sin tocar la orden original (ni su factura SRI).
+  rpc CreateAnnexContract(CreateAnnexRequest) returns (AnnexContract);
+  rpc ListAnnexContracts(OrderRef) returns (AnnexContractList);
 }
 
 message SearchFilters {
@@ -366,4 +369,35 @@ message SyncResult {
   bool enabled = 1;        // false si INVENTORY_GRPC_URL no está configurada
   int32 total = 2;
   bool synchronized = 3;
+}
+
+message AnnexItem {
+  string description = 1;
+  double unit_price = 2;
+  int32 quantity = 3;
+}
+
+message CreateAnnexRequest {
+  string order_id = 1;
+  repeated AnnexItem items = 2;
+  string operator = 3;
+  string notes = 4;
+}
+
+message AnnexContract {
+  string annex_id = 1;
+  string code = 2;          // ANX-XXXXXX
+  string order_locator = 3; // PNR de la orden original (no cambia)
+  repeated AnnexItem items = 4;
+  double total = 5;
+  string currency = 6;
+  string status = 7;        // COBRADO_EN_MOSTRADOR
+  string operator = 8;
+  string notes = 9;
+  string created_at = 10;
+  double order_total = 11;  // total de la orden original, que NO se modifica
+}
+
+message AnnexContractList {
+  repeated AnnexContract contracts = 1;
 }

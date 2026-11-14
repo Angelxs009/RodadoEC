@@ -29,6 +29,14 @@ Un cambio MAJOR **no muta** el contrato existente: se publica uno nuevo (`autos.
 | gRPC Identidad | `proto/autos/identity/v1/identity.proto` | v1 |
 | GraphQL federado (subgrafo) | `graphql/autos.graphql` | 1.0.0 |
 
+## 3.3.0 (REST v3.3, MINOR) — cancelación con plazo de 24 h y contrato anexo de mostrador
+
+Cambios compatibles hacia atrás; a pedido de la cátedra RDA2.
+
+- **Cancelación (`POST /autos/orders/{orderId}/cancel`):** solo con al menos 24 h de anticipación a la recogida (`CANCEL_MIN_HOURS`); si faltan menos, `409 Cancelación Fuera de Plazo`. Una orden ya entregada o completada responde `409 Cancelación No Permitida`. La respuesta agrega `refund.message` e `inventory_restoration.message`.
+- **Contrato anexo de mostrador:** `POST /autos/orders/{id}/contratos-anexos` (y `GET` para listarlos). Los extras, upgrades o días adicionales que se piden al retirar el auto se cobran en un contrato anexo independiente (`ANX-XXXXXX`); la orden original, la de Booking y la factura SRI no cambian. gRPC `CreateAnnexContract` / `ListAnnexContracts` (MINOR).
+- Regla de mostrador sin cambio de API: no hay reembolso por devolución anticipada (`checkin-devolucion` no genera reembolso).
+
 ## 3.2.0 (REST v3.2, MINOR) — disponibilidad por fechas y aviso solo de reservas de Booking
 
 Cambios compatibles hacia atrás (campos nuevos opcionales); a pedido del Booking.

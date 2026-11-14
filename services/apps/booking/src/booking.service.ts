@@ -30,7 +30,7 @@ import {
   vehicleReserved,
   vehicleUnavailable,
 } from '@autos/common';
-import { Order, OrderStatus, PromoContract, WebhookEvent } from './entities/booking.entities';
+import { AnnexContract, Order, OrderStatus, PromoContract, WebhookEvent } from './entities/booking.entities';
 import { dateSlotOfIso, InventoryClient, localDateSlot } from './inventory.client';
 import { WebhooksService } from './webhooks.service';
 
@@ -64,6 +64,22 @@ function daysBetween(pickup: string, dropoff: string): number {
 }
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : '');
+
+export function toAnnexMsg(a: AnnexContract, orderTotal: number) {
+  return {
+    annex_id: a.id,
+    code: a.code,
+    order_locator: a.order_locator,
+    items: a.items,
+    total: a.total,
+    currency: a.currency,
+    status: a.status,
+    operator: a.operator ?? '',
+    notes: a.notes ?? '',
+    created_at: a.created_at.toISOString(),
+    order_total: orderTotal,
+  };
+}
 
 export function toOrderMsg(o: Order) {
   return {
@@ -112,6 +128,7 @@ export class BookingService implements OnModuleInit {
   constructor(
     @InjectRepository(Order) private readonly orders: Repository<Order>,
     @InjectRepository(PromoContract) private readonly promo: Repository<PromoContract>,
+    @InjectRepository(AnnexContract) private readonly annexes: Repository<AnnexContract>,
     @Inject('CATALOG_CLIENT') catalogClient: ClientGrpc,
     @Inject('PAYMENTS_CLIENT') paymentsClient: ClientGrpc,
     private readonly cache: TtlCache,
@@ -525,6 +542,41 @@ export class BookingService implements OnModuleInit {
     const at = dateSlotOfIso(order.route_details?.pickup?.datetime);
     void this.inventory.pushStock(order.vehicle_details.vehicle_id, at.date, at.slot, true);
     return { order: saved, refund: order.refund };
+  }
+
+  // ═══ Contrato anexo de mostrador ══════════════════════════════════════════
+  /**
+   * Regla de mostrador: los extras, upgrades o dias adicionales que pide el cliente al retirar NO modifican la orden original
+   * (para no desfasar la orden de Booking ni la factura SRI): se cobran en un contrato anexo independiente.
+   */
+  async createAnnexContract(req: { order_id: string; items: { description: string; unit_price: number; quantity: number }[]; operator?: string; notes?: string }) {
+    const order = await this.findOrder(req.order_id);
+    if (order.status !== OrderStatus.CONFIRMED && order.status !== OrderStatus.DELIVERED) {
+      throw invalidStateTransition(`Solo se puede crear un contrato anexo para una orden CONFIRMED o ENTREGADO; la orden ${order.locator} esta ${order.status}.`);
+    }
+    const items = (req.items ?? []).map((i) => ({ description: i.description, unit_price: Number(i.unit_price), quantity: Number(i.quantity) || 1 }));
+    const total = Number(items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0).toFixed(2));
+    const saved = await this.annexes.save(
+      this.annexes.create({
+        id: randomUUID(),
+        code: `ANX-${randomBytes(3).toString('hex').toUpperCase()}`,
+        order_id: order.id,
+        order_locator: order.locator,
+        items,
+        total,
+        currency: order.currency,
+        status: 'COBRADO_EN_MOSTRADOR',
+        operator: req.operator || null,
+        notes: req.notes || null,
+      }),
+    );
+    return toAnnexMsg(saved, order.total_price);
+  }
+
+  async listAnnexContracts(req: { order_id: string }) {
+    const order = await this.findOrder(req.order_id);
+    const found = await this.annexes.find({ where: { order_id: order.id }, order: { created_at: 'ASC' } });
+    return { contracts: found.map((a) => toAnnexMsg(a, order.total_price)) };
   }
 
   // ═══ Contrato v2 · fases presenciales ═════════════════════════════════════

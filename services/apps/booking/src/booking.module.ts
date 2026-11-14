@@ -4,15 +4,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { databaseModule, grpcClientOptions, healthModuleFor, TtlCache } from '@autos/common';
 import { BookingController } from './booking.controller';
 import { BookingService } from './booking.service';
-import { Order, OutboxEvent, PromoContract, WebhookDelivery, WebhookSubscription } from './entities/booking.entities';
+import { AnnexContract, Order, OutboxEvent, PromoContract, WebhookDelivery, WebhookSubscription } from './entities/booking.entities';
 import { BrokerPublisher } from './broker.publisher';
 import { InventoryClient } from './inventory.client';
 import { WebhooksService } from './webhooks.service';
 
 @Module({
   imports: [
-    databaseModule('booking', [Order, WebhookSubscription, WebhookDelivery, OutboxEvent, PromoContract]),
-    TypeOrmModule.forFeature([Order, WebhookSubscription, WebhookDelivery, OutboxEvent, PromoContract]),
+    databaseModule('booking', [AnnexContract, Order, WebhookSubscription, WebhookDelivery, OutboxEvent, PromoContract]),
+    TypeOrmModule.forFeature([AnnexContract, Order, WebhookSubscription, WebhookDelivery, OutboxEvent, PromoContract]),
     // Clientes gRPC hacia los otros microservicios (direcciones por variable de entorno).
     ClientsModule.register([
       {

@@ -4,10 +4,10 @@ Duración sugerida: **8–10 minutos de demostración** y el resto para pregunta
 
 ## Antes de empezar (2 minutos antes de tu turno)
 
-1. Abre `https://rodadoec-api.onrender.com/warmup` y espera a que diga `"status":"ok"` con los 4 servicios `up`. El plan gratuito se
-   duerme a los 15 minutos y el primer arranque tarda; así la demo no se queda esperando.
-2. Ten abiertas estas pestañas: el sitio `https://rodado-ec.vercel.app`, el Swagger `https://rodadoec-api.onrender.com/api/docs-v3`,
-   el repositorio de GitHub y el informe (`docs/INFORME_TECNICO.md`).
+1. Abre `https://rodadoec-api.azurewebsites.net/warmup` y espera a que diga `"status":"ok"` con los 4 servicios `up`. (En Azure el servicio tiene
+   Always On; si usas el respaldo de Render, el plan gratuito se duerme a los 15 minutos y el primer arranque tarda.)
+2. Ten abiertas estas pestañas: el sitio `https://rodado-ec.vercel.app`, el Swagger `https://rodadoec-api.azurewebsites.net/api/docs-v3`,
+   el repositorio de GitHub y el informe (`docs/INFORME_TECNICO.md`). Comprueba a qué API apunta el sitio de Vercel (`VITE_API_URL`) antes de la demo.
 3. Ten a mano la contraseña del admin (está en tu `.env`, no en el repositorio) y una terminal con el proyecto.
 
 ## Demostración (orden recomendado)
@@ -25,8 +25,9 @@ Variante de falla: paga con `4000 0000 0000 0002` (fondos insuficientes) y muest
 
 **4. El contrato oficial y su verificación (2 min).** En Swagger `/api/docs-v3`: "este es el contrato que publicó el agregador, copiado
 sin modificar". Ejecuta `GET /autos/health` (semáforo del nodo). Después en la terminal:
-`GATEWAY_URL=https://rodadoec-api.onrender.com npm run test:integration --prefix services`
-y señala que **cada respuesta se valida contra el propio YAML** y que se ejercitan las 19 operaciones. Resultado: 49 de 49.
+`npm run test:integration --prefix services` (con el sistema local levantado con `ALLOW_PAST_DATES=true`)
+y señala que **cada respuesta se valida contra el propio YAML** y que se ejercitan las 21 operaciones. Resultado: 68 de 69 con esa opción
+(la restante valida el rechazo de fecha pasada y pasa con la opción apagada), más 57 pruebas unitarias.
 
 **5. La saga y la máquina de estados (2 min).** En Swagger o con curl, en este orden:
 `POST /autos/orders/create` (el auto pasa a RESERVADO) → intentar reservarlo otra vez (`409 VEHICLE_UNAVAILABLE`) →
@@ -35,6 +36,13 @@ anteriores se compensan.
 
 **6. Cooldown de 2 horas (1 min).** Entrega y devuelve un auto (`checkin-entrega` y `checkin-devolucion`): queda `EN_LIMPIEZA`, desaparece
 de `GET /autos` y aparece en `GET /autos/flota` con el cronómetro.
+
+**6 bis. Mostrador y reglas de negocio (2 min).** En el panel de admin → Mostrador (usuario `admin`): busca una reserva por código, pulsa
+"Extras en mostrador" (GPS, silla, upgrade) y muestra que se crea un **contrato anexo** `ANX-…` y que el total de la orden original **no cambia**.
+Luego "Confirmar entrega de llaves" (la reserva pasa a ENTREGADO) y "Registrar devolución" (km recorridos y limpieza de 2 h). En la página de la
+reserva del cliente muestra: "Cancelar Renta" solo con 24 h o más de anticipación (modal con código `REF-AUTO-…`), el aviso de política de 24 h cuando
+falta menos y "No cancelable" cuando el auto ya se entregó. Abre Admin → Órdenes en una pestaña y cancela por API en otra: la fila cambia sola en
+5 segundos (refresh silencioso).
 
 **7. Trazabilidad (30 s).** Muestra que la respuesta trae `X-Correlation-Id` y que el mismo identificador sale en los logs y en los
 eventos (`GET /autos/eventos`).
@@ -81,9 +89,20 @@ Para que ningún servicio dependa de las tablas de otro. Usamos una sola instanc
 gratuito solo ofrece una base; el script `02_microservicios_autos.sql` permite separarlas en bases distintas sin cambiar el código.
 
 **¿Qué falta o qué mejorarían?**
-Confirmar con el agregador el cuerpo exacto del respaldo REST del stock (implementado pero basado en una suposición: los mismos campos del mensaje
-gRPC; desde Render no se llega a su puerto 50051). También escalar los módulos por separado en un host con soporte de gRPC, y reemplazar la
+Probar el respaldo REST del stock contra el Booking real (hoy solo está probado contra un servidor de prueba, con el cuerpo de su guía;
+desde Render no se llega a su puerto 50051), y activar el despliegue continuo a Azure (hoy se despliega a mano). También escalar los módulos por separado en un host con soporte de gRPC, y reemplazar la
 pasarela simulada por una real.
+
+**¿Qué pasa si el cliente pide un extra o un auto más grande al retirar?**
+No se modifica la reserva original (para no desfasar la orden de Booking ni la factura SRI): se cobra un contrato anexo independiente
+(`POST /autos/orders/{id}/contratos-anexos`). Y si devuelve el auto antes de tiempo no hay reembolso en mostrador.
+
+**¿Hasta cuándo se puede cancelar?**
+Hasta 24 horas antes de la hora de recogida, con reembolso del 100% y el auto vuelve a DISPONIBLE. Después, o si el auto ya se entregó, responde
+`409` y el botón desaparece de la web.
+
+**¿Cómo se entera la web de que Booking canceló o entregó una orden?**
+Con refresh silencioso: cada 5 segundos consulta el estado y actualiza solo la tarjeta que cambió, sin loaders ni recargar la página.
 
 ## Si algo falla en la demo
 

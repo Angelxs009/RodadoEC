@@ -43,6 +43,16 @@ export class BookingController {
     return this.booking.getOrder(req);
   }
 
+  @GrpcMethod(S, 'CreateAnnexContract')
+  createAnnexContract(req: any) {
+    return this.booking.createAnnexContract(req);
+  }
+
+  @GrpcMethod(S, 'ListAnnexContracts')
+  listAnnexContracts(req: any) {
+    return this.booking.listAnnexContracts(req);
+  }
+
   @GrpcMethod(S, 'ModifyOrder')
   modifyOrder(req: any) {
     return this.booking.modifyOrder(req);

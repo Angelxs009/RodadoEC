@@ -23,6 +23,23 @@ const COVERAGE_INPUT = ['BASIC', 'BASICA', 'TOTAL', 'PREMIUM'];
  * Es una fachada sobre los microservicios por gRPC. El contrato se publica tal cual en /api/docs/v2; este
  * controlador no se documenta con decoradores propios para que la única fuente de verdad sea el archivo.
  */
+/** Contrato anexo de mostrador en la forma del contrato v3. */
+function annexToV3(a: any) {
+  return {
+    contrato_id: a.code,
+    pnr: a.order_locator,
+    estado: a.status,
+    conceptos: (a.items ?? []).map((i: any) => ({ descripcion: i.description, precio_unitario: i.unit_price, cantidad: i.quantity })),
+    total: a.total,
+    moneda: a.currency,
+    operador: a.operator || null,
+    observaciones: a.notes || null,
+    fecha: a.created_at,
+    total_orden_original: a.order_total,
+    mensaje: 'Contrato anexo independiente: la orden original y su facturacion no se modifican.',
+  };
+}
+
 @Controller('v2/autos')
 @ApiExcludeController()
 export class AutosV2Controller {
@@ -424,6 +441,36 @@ export class AutosV2Controller {
       mensaje: 'Llaves entregadas al conductor. Auto en tránsito (Fase ENTREGADO).',
       booking_sync: bookingSync,
     };
+  }
+
+  @Post('orders/:id/contratos-anexos')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(V2AccessGuard, IdempotencyKeyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
+  async crearContratoAnexo(@Param('id') id: string, @Body() b: any) {
+    const bad: InvalidParam[] = [];
+    const items = Array.isArray(b?.conceptos) ? b.conceptos : [];
+    if (items.length === 0) bad.push({ name: 'conceptos', reason: 'Debe incluir al menos un concepto.' });
+    items.forEach((c: any, i: number) => {
+      if (!isText(c?.descripcion)) bad.push({ name: `conceptos[${i}].descripcion`, reason: 'Es obligatorio.' });
+      if (typeof c?.precio_unitario !== 'number' || !(c.precio_unitario > 0)) bad.push({ name: `conceptos[${i}].precio_unitario`, reason: 'Debe ser un numero mayor a 0.' });
+      if (c?.cantidad !== undefined && !isInt(c.cantidad, 1)) bad.push({ name: `conceptos[${i}].cantidad`, reason: 'Debe ser un entero mayor o igual a 1.' });
+    });
+    throwIfInvalid(bad);
+    const a = await this.backends.booking.call<any>('CreateAnnexContract', {
+      order_id: id,
+      items: items.map((c: any) => ({ description: c.descripcion, unit_price: c.precio_unitario, quantity: c.cantidad ?? 1 })),
+      operator: b.operador ?? '',
+      notes: b.observaciones ?? '',
+    });
+    return annexToV3(a);
+  }
+
+  @Get('orders/:id/contratos-anexos')
+  @UseGuards(V2AccessGuard)
+  async listarContratosAnexos(@Param('id') id: string) {
+    const r = await this.backends.booking.call<any>('ListAnnexContracts', { order_id: id });
+    return { data: (r.contracts ?? []).map(annexToV3) };
   }
 
   @Post('orders/:id/checkin-devolucion')

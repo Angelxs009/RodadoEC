@@ -307,6 +307,45 @@ export const adminApi = {
   },
 };
 
+export interface AnnexContract {
+  contrato_id: string;
+  pnr: string;
+  estado: string;
+  conceptos: { descripcion: string; precio_unitario: number; cantidad: number }[];
+  total: number;
+  moneda: string;
+  total_orden_original: number;
+  mensaje: string;
+}
+
+/**
+ * Contrato anexo de mostrador (contrato v3.3): los extras, upgrades o días adicionales pedidos al retirar el auto
+ * se cobran aparte; la orden original (y la de Booking) no se modifica.
+ */
+export async function createAnnexContract(
+  locator: string,
+  payload: { conceptos: { descripcion: string; precio_unitario: number; cantidad?: number }[]; operador?: string; observaciones?: string },
+): Promise<AnnexContract> {
+  const token = getAdminToken();
+  const res = await fetch(
+    `${import.meta.env.VITE_API_URL ?? ''}/api/v3/autos/orders/${encodeURIComponent(locator)}/contratos-anexos`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Affiliate-Id': AFFILIATE_ID,
+        'Idempotency-Key': crypto.randomUUID(),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+  const raw = await res.text();
+  const data = raw ? JSON.parse(raw) : undefined;
+  if (!res.ok) throw new ApiError(data as ProblemDetails);
+  return data as AnnexContract;
+}
+
 export interface ReturnResult {
   success: boolean;
   order_id: string;

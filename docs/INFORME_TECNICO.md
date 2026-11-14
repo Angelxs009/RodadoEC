@@ -120,6 +120,25 @@ Todo error usa `application/problem+json` con `type`, `title`, `status`, `detail
 `invalid_params`. Los códigos siguen al agregador: `409` es el **único** que activa la compensación de su saga; `422` (`DRIVER_UNDERAGE`,
 `INVALID_DATES`) son errores semánticos que no la activan; `400` para sintaxis e idempotencia.
 
+### 4.5 Operación en mostrador (entrega, devolución, cancelación y extras)
+
+Reglas oficiales de la cátedra RDA2 para el mostrador de la agencia, implementadas en el servicio de Reservas y expuestas por el contrato v3.3:
+
+- **Entrega** (`checkin-entrega`): el operador valida licencia y kilometraje de salida; la orden pasa a `ENTREGADO` y el auto a `ENTREGADO`. Solo las
+  reservas que llegaron con la clave del nodo (origen `BOOKING`) se avisan al agregador.
+- **Devolución** (`checkin-devolucion`): odómetro de retorno (no puede ser menor al de salida), km recorridos, orden `COMPLETADA`, auto en limpieza 2 h y
+  alerta de mantenimiento si pasa el umbral. **No hay reembolso por devolución anticipada**: devolver el auto antes no genera ningún cobro ni reembolso.
+- **Cancelación con plazo de 24 h** (`POST /autos/orders/{id}/cancel`): reembolso del 100% (`REF-AUTO-…`) y el auto vuelve a `DISPONIBLE`, pero solo
+  si faltan al menos 24 h para la recogida (variable `CANCEL_MIN_HOURS`). Con menos tiempo responde `409 Cancelación Fuera de Plazo`; si el auto ya
+  fue entregado, `409 Cancelación No Permitida`. Cancelar una orden ya cancelada es idempotente (200 sin duplicar stock).
+- **Extras, upgrades o días adicionales en mostrador** (`POST /autos/orders/{id}/contratos-anexos`): no se modifica la reserva original; se cobran en un
+  **contrato anexo independiente** (`ANX-XXXXXX`, tabla `annex_contracts`) para no desfasar la orden de Booking ni la facturación SRI. Solo aplica a
+  órdenes `CONFIRMED` o `ENTREGADO`. La orden conserva su total original.
+- **Web:** el cliente ve "Cancelar Renta" solo si faltan 24 h o más (modal de confirmación y de éxito con el código de reembolso); el panel de admin
+  tiene el mostrador de entregas, devoluciones y extras. Las pantallas de órdenes y flota se actualizan solas cada 5 s (refresh silencioso, sin
+  recargar la página): una orden cancelada pasa a rojo y el auto restituido vuelve a `DISPONIBLE`; uno alquilado aparece como "No disponible · En uso".
+- **Zona horaria:** las fechas de recogida y entrega se envían con offset `-05:00` y se muestran en hora de Ecuador.
+
 ---
 
 ## 5. Seguridad
@@ -158,7 +177,13 @@ clave; la protección está implementada y se activa solo con una variable de en
   una operación devuelve un código de estado que el contrato no declara. Una prueba final exige que se hayan ejercitado **las 19
   operaciones** del contrato.
 
-Resultado: **49 de 49 contra la URL pública de internet** (y contra el sistema local en Docker, donde la última corrida completa fue de 48 antes de añadir la prueba del catálogo completo).
+Resultado histórico: **49 de 49 contra la URL pública de internet**.
+
+Estado actual (rama `microservicios`, contrato v3.3): **57 pruebas unitarias** y **69 de integración** contra el sistema levantado con Docker. Se añadieron
+la regla de 24 h de la cancelación, el 409 de una orden entregada, los mensajes de reembolso e inventario y el contrato anexo; la prueba final exige que
+se ejerciten **las 21 operaciones** del contrato. Para correr la suite en local las pruebas usan fechas fijas del contrato, así que el sistema se levanta con
+`ALLOW_PAST_DATES=true`; con esa opción pasan 68, y la restante (rechazo de fecha pasada con `400`) solo tiene sentido con la opción apagada y pasa
+ejecutada aparte. El CI de GitHub Actions corre lint, pruebas unitarias, E2E y la conformidad con el contrato.
 
 ---
 
@@ -166,8 +191,8 @@ Resultado: **49 de 49 contra la URL pública de internet** (y contra el sistema 
 
 | Pieza | Dónde |
 |---|---|
-| API (gateway + 4 servicios) | Render, un servicio (`rodadoec-api`) |
-| Base de datos | Neon (PostgreSQL), un schema por servicio |
+| API (gateway + 4 servicios) | Azure App Service (`rodadoec-api`, `https://rodadoec-api.azurewebsites.net/api/v3`), un proceso; respaldo en Render |
+| Base de datos | Azure Database for PostgreSQL Flexible Server, un schema por servicio (Neon quedó como respaldo sin uso) |
 | Frontend | Vercel, apunta al API con `VITE_API_URL` |
 | Local | `docker compose up --build` (Postgres + 5 contenedores); opcional `--profile brokers` (RabbitMQ y Kafka) |
 
@@ -189,21 +214,24 @@ para un host que sí soporte gRPC (por ejemplo Cloud Run o una máquina virtual 
 |---|---|
 | Sistema migrado a microservicios | 4 servicios con datos propios + gateway (`services/apps/*`) |
 | Booking consume APIs y eventos | REST v3, GraphQL federado, gRPC de stock, webhooks, feed outbox, RabbitMQ/Kafka |
-| Marketplace web distribuido funciona | Sitio en Vercel contra el API en Render |
+| Marketplace web distribuido funciona | Sitio en Vercel contra el API (Azure, con Render de respaldo) |
 | Administración funciona | Panel con los 6 estados del auto, agencias, órdenes y usuarios |
 | API Gateway funcional | `apps/gateway`: enruta, valida JWT, idempotencia, traduce errores |
 | Contratos documentados y versionados | OpenAPI v1–v3, `.proto`, GraphQL, `CHANGELOG.md`, verificador de compatibilidad |
-| Pruebas de integración | 49 pruebas, validadas contra el YAML |
+| Pruebas de integración | 69 pruebas de integración + 57 unitarias, validadas contra el YAML (21 operaciones) |
 | Seguridad básica | JWT con roles, clave M2M, admin protegido, HMAC, CORS |
-| Todo desplegado en internet | Render + Neon + Vercel |
+| Todo desplegado en internet | Azure App Service + Azure PostgreSQL + Vercel (respaldo: Render) |
 
 ---
 
 ## 10. Limitaciones conocidas
 
 - **Respaldo REST del stock** (`POST /api/v3/inventory/stock` en Booking): desde Render no se llega al `:50051` de Booking por gRPC (con Tailscale, red
-  privada, sí). Implementamos el respaldo REST (apagado por defecto, `INVENTORY_REST_URL`) **suponiendo** que el cuerpo lleva los mismos campos del mensaje gRPC, porque
-  la guía no publica el esquema; está probado contra un servidor de prueba, no contra el real.
+  privada, sí). El respaldo REST (apagado por defecto, `INVENTORY_REST_URL`) envía el cuerpo que pide la guía de Booking para Azure
+  (`item_id`, `available_units`, `date`, `reason`); está probado contra un servidor de prueba, no contra el real.
+- **CD automático a Azure:** el workflow `cd.yml` solo existe en la rama `microservicios` y GitHub exige que un `workflow_run` esté en la rama principal
+  (además del secreto `AZURE_WEBAPP_PUBLISH_PROFILE`); mientras tanto el despliegue a Azure se hace a mano con `az webapp deploy`.
+- **Las reservas anteriores al cambio de zona horaria** quedaron guardadas con hora local rotulada como UTC y se ven 5 h corridas; las nuevas salen bien.
 - **Plan gratuito:** el servicio se duerme a los 15 minutos y tarda en despertar; las horas gratuitas del mes se comparten entre todos los
   servicios del espacio de trabajo de Render.
 - **Un solo proceso en Render:** los módulos comparten proceso y memoria (no se escalan ni fallan por separado en esa instancia).

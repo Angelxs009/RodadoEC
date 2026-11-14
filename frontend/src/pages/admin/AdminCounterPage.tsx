@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { DeliveryDialog, deliveryNotice } from '../../components/DeliveryDialog';
+import { AnnexDialog, annexNotice } from '../../components/AnnexDialog';
 import { ReturnDialog, returnNotice } from '../../components/ReturnDialog';
 import { EmptyState, ErrorState } from '../../components/StateViews';
-import { ApiError, adminApi, findClient, type DeliveryResult, type ReturnResult } from '../../lib/api';
+import { ApiError, adminApi, findClient, type AnnexContract, type DeliveryResult, type ReturnResult } from '../../lib/api';
 import { mergeById, usePolling } from '../../lib/use-polling';
 import type { AdminOrder } from '../../types/admin';
 
@@ -37,6 +38,7 @@ export function AdminCounterPage() {
   const [searching, setSearching] = useState(false);
   const [delivering, setDelivering] = useState<AdminOrder | null>(null);
   const [returning, setReturning] = useState<AdminOrder | null>(null);
+  const [annexing, setAnnexing] = useState<AdminOrder | null>(null);
   const [notice, setNotice] = useState<{ tone: 'success' | 'warning'; text: string } | null>(null);
 
   function load() {
@@ -93,6 +95,11 @@ export function AdminCounterPage() {
     setDelivering(null);
     setNotice(deliveryNotice(order, result));
     load();
+  }
+
+  function onAnnexed(order: AdminOrder, annex: AnnexContract) {
+    setAnnexing(null);
+    setNotice(annexNotice(order, annex));
   }
 
   function onReturned(order: AdminOrder, result: ReturnResult) {
@@ -196,16 +203,19 @@ export function AdminCounterPage() {
                     </p>
                     <p className="truncate text-sm text-neutral-500">{o.driver_details?.email ?? 'Sin correo'}</p>
                   </div>
-                  {o.status === 'CONFIRMED' && (
-                    <Button onClick={() => setDelivering(o)} className="shrink-0">
-                      Confirmar entrega de llaves
-                    </Button>
-                  )}
-                  {o.status === 'ENTREGADO' && (
-                    <Button onClick={() => setReturning(o)} className="shrink-0">
-                      Registrar devolución
-                    </Button>
-                  )}
+                  <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+                    {(o.status === 'CONFIRMED' || o.status === 'ENTREGADO') && (
+                      <Button variant="secondary" onClick={() => setAnnexing(o)}>
+                        Extras en mostrador
+                      </Button>
+                    )}
+                    {o.status === 'CONFIRMED' && (
+                      <Button onClick={() => setDelivering(o)}>Confirmar entrega de llaves</Button>
+                    )}
+                    {o.status === 'ENTREGADO' && (
+                      <Button onClick={() => setReturning(o)}>Registrar devolución</Button>
+                    )}
+                  </div>
                 </li>
               );
             })}
@@ -218,6 +228,8 @@ export function AdminCounterPage() {
       )}
 
       {returning && <ReturnDialog order={returning} onClose={() => setReturning(null)} onDone={onReturned} />}
+
+      {annexing && <AnnexDialog order={annexing} onClose={() => setAnnexing(null)} onDone={onAnnexed} />}
     </div>
   );
 }
