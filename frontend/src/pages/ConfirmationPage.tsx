@@ -176,7 +176,7 @@ export function ConfirmationPage() {
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: 'UTC',
+    timeZone: 'America/Guayaquil',
   });
   const pickupAt = order.route_details?.pickup?.datetime;
   const dropoffAt = order.route_details?.dropoff?.datetime;

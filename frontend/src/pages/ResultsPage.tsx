@@ -14,7 +14,7 @@ import { cityLabel, useAgencies } from '../lib/depots';
 import { usePolling } from '../lib/use-polling';
 
 function formatRange(from: string, to: string) {
-  const fmt = new Intl.DateTimeFormat('es-EC', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const fmt = new Intl.DateTimeFormat('es-EC', { day: 'numeric', month: 'short', timeZone: 'America/Guayaquil' });
   return `${fmt.format(new Date(from))} → ${fmt.format(new Date(to))}`;
 }
 

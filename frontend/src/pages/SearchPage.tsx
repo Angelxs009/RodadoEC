@@ -81,8 +81,8 @@ export function SearchPage() {
       currency: 'USD',
       driver: { age: driverAge },
       route: {
-        pickup: { datetime: `${pickupDate}:00Z`, location: { city_id: cityId } },
-        dropoff: { datetime: `${dropoffDate}:00Z`, location: { city_id: cityId } },
+        pickup: { datetime: `${pickupDate}:00-05:00`, location: { city_id: cityId } },
+        dropoff: { datetime: `${dropoffDate}:00-05:00`, location: { city_id: cityId } },
       },
     };
 
