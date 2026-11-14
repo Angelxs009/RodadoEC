@@ -2,8 +2,10 @@ name: CD
 
 # Despliegue continuo a Azure App Service (https://rodadoec-api.azurewebsites.net).
 # Solo corre cuando el CI terminó en VERDE sobre la rama microservicios (o a mano con "Run workflow").
-# Requiere el secreto AZURE_WEBAPP_PUBLISH_PROFILE (Portal de Azure > rodadoec-api > Descargar perfil de publicación).
-# Sin el secreto, el job se salta y deja un aviso: no falla ni toca producción.
+# Autenticación: login federado OIDC (sin contraseñas ni perfil de publicación; la app tiene la autenticación básica de SCM deshabilitada).
+# Requiere los secretos AZURE_CLIENT_ID, AZURE_TENANT_ID y AZURE_SUBSCRIPTION_ID (app de Entra "rodadoec-github-cd" con el rol
+# Website Contributor solo sobre rodadoec-api y una credencial federada para el entorno "production" de este repositorio).
+# Sin los secretos, el job se salta y deja un aviso: no falla ni toca producción.
 # Render y Vercel ya se redespliegan solos con cada push (integración nativa), no pasan por este flujo.
 on:
   workflow_run:
@@ -14,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: cd-azure
@@ -21,6 +24,7 @@ concurrency:
 
 env:
   AZURE_WEBAPP_NAME: rodadoec-api
+  AZURE_RESOURCE_GROUP: rodadoec-api-rg
   NODE_VERSION: '22'
 
 jobs:
@@ -31,13 +35,13 @@ jobs:
     timeout-minutes: 30
     environment: production
     env:
-      PUBLISH_PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
     steps:
-      - name: Verificar que existe el secreto de publicación
+      - name: Verificar que existen los secretos de Azure
         id: guard
         run: |
-          if [ -z "$PUBLISH_PROFILE" ]; then
-            echo "::warning::Falta el secreto AZURE_WEBAPP_PUBLISH_PROFILE: no se despliega."
+          if [ -z "$AZURE_CLIENT_ID" ]; then
+            echo "::warning::Faltan los secretos AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID: no se despliega."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -72,13 +76,18 @@ jobs:
           (cd stage && zip -qr ../package.zip .)
           ls -lh package.zip
 
+      - name: Iniciar sesión en Azure (OIDC)
+        if: steps.guard.outputs.ready == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Desplegar a Azure App Service
         if: steps.guard.outputs.ready == 'true'
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: package.zip
+        run: |
+          az webapp deploy --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --src-path package.zip --type zip
 
       - name: Prueba de humo (salud de la API desplegada)
         if: steps.guard.outputs.ready == 'true'
