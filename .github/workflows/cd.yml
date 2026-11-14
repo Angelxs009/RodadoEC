@@ -87,7 +87,7 @@ jobs:
       - name: Desplegar a Azure App Service
         if: steps.guard.outputs.ready == 'true'
         run: |
-          az webapp deploy --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --src-path package.zip --type zip
+          az webapp deploy --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --src-path package.zip --type zip --async true
 
       - name: Prueba de humo (salud de la API desplegada)
         if: steps.guard.outputs.ready == 'true'
