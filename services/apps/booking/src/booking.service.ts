@@ -6,6 +6,7 @@ import { EntityManager, Repository } from 'typeorm';
 import {
   bookingNotConfirmed,
   cancellationNotAllowed,
+  cancellationOutOfWindow,
   carNoLongerAvailable,
   blockedByVehicleState,
   computePricing,
@@ -483,7 +484,12 @@ export class BookingService implements OnModuleInit {
 
   private async cancel(order: Order) {
     if (order.status === OrderStatus.CANCELLED) return { order, refund: order.refund! }; // idempotente
-    if (order.status !== OrderStatus.CONFIRMED) throw cancellationNotAllowed();
+    if (order.status !== OrderStatus.CONFIRMED || order.delivered_at) throw cancellationNotAllowed();
+
+    // Regla de mostrador: reembolso del 100% solo con al menos CANCEL_MIN_HOURS (24 por defecto) de anticipación a la recogida.
+    const minHours = Number(process.env.CANCEL_MIN_HOURS ?? 24);
+    const pickupMs = ecuadorMs(order.route_details?.pickup?.datetime);
+    if (Number.isFinite(pickupMs) && pickupMs - Date.now() < minHours * 3_600_000) throw cancellationOutOfWindow();
 
     order.status = OrderStatus.CANCELLED;
     order.refund = {
@@ -492,6 +498,7 @@ export class BookingService implements OnModuleInit {
       currency: order.currency,
       percentage: 100,
       status: 'PROCESSED',
+      message: 'Reembolso total de renta procesado sin penalización (Saga Pattern).',
     };
     const saved = await this.orders.save(order);
 

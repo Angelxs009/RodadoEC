@@ -6,6 +6,7 @@ import { DeliveryDialog, deliveryNotice } from '../../components/DeliveryDialog'
 import { EmptyState, ErrorState } from '../../components/StateViews';
 import { Table, TableBody, TableHead, Td, Th, Tr } from '../../components/Table';
 import { ApiError, adminApi, type DeliveryResult } from '../../lib/api';
+import { mergeById, usePolling } from '../../lib/use-polling';
 import type { AdminOrder } from '../../types/admin';
 
 type Tone = 'success' | 'danger' | 'warning' | 'brand' | 'neutral';
@@ -39,6 +40,12 @@ export function AdminOrdersPage() {
   }
 
   useEffect(load, []);
+
+  // Refresh silencioso: cambios de estado (entrega, cancelación, devolución) sin recargar la página.
+  usePolling(async () => {
+    const fresh = await adminApi.listOrders();
+    setOrders((prev) => mergeById(prev, fresh));
+  });
 
   function onDelivered(order: AdminOrder, result: DeliveryResult) {
     setDelivering(null);

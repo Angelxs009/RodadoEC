@@ -244,8 +244,14 @@ export class AutosController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(IdempotencyKeyGuard)
   @UseInterceptors(IdempotencyInterceptor)
-  async cancelOrder(@Param('orderId', ParseUUIDPipe) orderId: string): Promise<void> {
-    await this.backends.booking.call('CancelOrder', { order_id: orderId });
+  async cancelOrder(@Param('orderId', ParseUUIDPipe) orderId: string) {
+    const r = await this.backends.booking.call<any>('CancelOrderV2', { order_id: orderId });
+    return {
+      order_id: r.order.order_id,
+      status: r.order.status,
+      refund: { ...r.refund },
+      inventory_restoration: { status: 'RESTORED', vehicle_id: r.vehicle_id, new_state: 'DISPONIBLE' },
+    };
   }
 
   // ══ Webhooks ══════════════════════════════════════════════════════════════

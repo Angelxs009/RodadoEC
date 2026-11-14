@@ -261,6 +261,8 @@ describe('Reservas: ciclo completo con máquina de estados', () => {
   it('una orden entregada ya no se puede cancelar (409)', async () => {
     const r = await v2('POST', '/autos/orders/{orderId}/cancel', { orderId: pnr }, { headers: idem() });
     expect(r.status).toBe(409);
+    expect(r.body.title).toBe('Cancelación No Permitida');
+    expect(r.body.detail).toMatch(/ya fue retirado/);
   });
 
   it('POST /autos/orders/{id}/checkin-devolucion: odómetro, km recorridos y cooldown de 2 h', async () => {
@@ -300,6 +302,18 @@ describe('Reservas: ciclo completo con máquina de estados', () => {
 });
 
 describe('Cancelación con compensación (Saga)', () => {
+  it('regla de las 24 h: recogida a menos de 24 h → cancel 409 "Cancelación Fuera de Plazo" y la orden no se cancela', async () => {
+    const car = nextCar();
+    const today = new Date(Date.now() - 5 * 3_600_000).toISOString().slice(0, 10); // fecha de Ecuador
+    const created = await v2('POST', '/autos/orders/create', {}, { body: reserva(car, { pickup_date: today, pickup_time: '23:30', dropoff_date: day(3) }), headers: idem() });
+    expect(created.status).toBe(201);
+    const r = await v2('POST', '/autos/orders/{orderId}/cancel', { orderId: created.body.pnr }, { headers: idem() });
+    expect(r.status).toBe(409);
+    expect(r.body.title).toBe('Cancelación Fuera de Plazo');
+    expect(r.body.detail).toMatch(/24 horas/);
+    expect((await v2('GET', '/autos/orders/{orderId}', { orderId: created.body.pnr })).body.status).not.toBe('CANCELLED');
+  });
+
   it('POST /autos/reservas + cancel: reembolso 100% y el auto vuelve a DISPONIBLE', async () => {
     const car = nextCar();
     const created = await v2('POST', '/autos/reservas', {}, { body: reserva(car, { coverage_type: 'BASICA' }), headers: idem() });
@@ -313,6 +327,9 @@ describe('Cancelación con compensación (Saga)', () => {
     expect(r.body.refund.percentage).toBe(100);
     expect(r.body.refund.amount).toBe(created.body.total_price.total);
     expect(r.body.inventory_restoration.new_state).toBe('DISPONIBLE');
+    expect(r.body.refund.refund_id).toMatch(/^REF-AUTO-/);
+    expect(r.body.refund.message).toMatch(/Reembolso total/);
+    expect(r.body.inventory_restoration.message).toMatch(/reincorporado/);
     expect((await v2('GET', '/autos/{id}', { id: car })).body.estado).toBe('DISPONIBLE');
 
     const orden = await v2('GET', '/autos/orders/{orderId}', { orderId: created.body.pnr });

@@ -96,7 +96,7 @@ export class Order {
   km_retorno: number | null;
 
   @Column({ type: 'jsonb', nullable: true })
-  refund: { refund_id: string; amount: number; currency: string; percentage: number; status: string } | null;
+  refund: { refund_id: string; amount: number; currency: string; percentage: number; status: string; message?: string } | null;
 
   /** Origen de la reserva: BOOKING (API con la X-API-Key del nodo) o WEB (web propia). Solo BOOKING se avisa al entregar. */
   @Column({ type: 'varchar', length: 10, default: 'WEB' })

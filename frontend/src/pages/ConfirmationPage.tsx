@@ -10,19 +10,56 @@ import { VehicleImage } from '../components/VehicleImage';
 import { ApiError, autosApi } from '../lib/api';
 import { cityLabel, useAgencies } from '../lib/depots';
 import { EXTRAS_CATALOG } from '../lib/extras-catalog';
-import type { OrderDetail } from '../types/autos';
+import { usePolling } from '../lib/use-polling';
+import type { CancelResult, OrderDetail } from '../types/autos';
 
-const STATUS_TONE = {
+const STATUS_TONE: Record<string, 'success' | 'danger' | 'warning' | 'brand'> = {
   CONFIRMED: 'success',
   CANCELLED: 'danger',
   PENDING: 'warning',
-} as const;
+  ENTREGADO: 'brand',
+  COMPLETADA: 'brand',
+};
 
-const STATUS_LABEL = {
+const STATUS_LABEL: Record<string, string> = {
   CONFIRMED: 'Confirmada',
   CANCELLED: 'Cancelada',
   PENDING: 'Pendiente',
-} as const;
+  ENTREGADO: 'Entregada',
+  COMPLETADA: 'Completada',
+};
+
+const CANCEL_MIN_HOURS = 24;
+
+/** Hora de recogida como instante (las fechas de la API son hora de Ecuador, UTC-5, si no traen zona). */
+function pickupMs(iso?: string): number {
+  if (!iso) return NaN;
+  return new Date(/(Z|[+-]\d{2}:\d{2})$/.test(iso) ? iso : `${iso.length === 16 ? `${iso}:00` : iso}-05:00`).getTime();
+}
+
+/** Diálogo modal mínimo (fondo oscuro + tarjeta). */
+function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-md bg-white p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export function ConfirmationPage() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -30,6 +67,8 @@ export function ConfirmationPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelResult, setCancelResult] = useState<CancelResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [editingExtras, setEditingExtras] = useState(false);
@@ -54,13 +93,28 @@ export function ConfirmationPage() {
 
   useEffect(loadOrder, [orderId]);
 
+  // Refresh silencioso: si Booking cancela o el mostrador entrega el auto, la tarjeta cambia sola (sin loader).
+  usePolling(async () => {
+    if (!orderId || cancelling || savingExtras) return;
+    const fresh = await autosApi.getOrder(orderId);
+    setOrder((prev) =>
+      prev && prev.status === fresh.status && prev.total_price === fresh.total_price && prev.extras.join() === fresh.extras.join()
+        ? prev
+        : fresh,
+    );
+  });
+
   async function handleCancel() {
     if (!orderId) return;
     setCancelling(true);
+    setError(null);
     try {
-      await autosApi.cancelOrder(orderId);
-      loadOrder();
+      const result = await autosApi.cancelOrder(orderId);
+      setConfirmingCancel(false);
+      setCancelResult(result);
+      setOrder((prev) => (prev ? { ...prev, status: 'CANCELLED' } : prev));
     } catch (err) {
+      setConfirmingCancel(false);
       setError(err instanceof ApiError ? err.message : 'No se pudo cancelar la orden.');
     } finally {
       setCancelling(false);
@@ -126,6 +180,9 @@ export function ConfirmationPage() {
   });
   const pickupAt = order.route_details?.pickup?.datetime;
   const dropoffAt = order.route_details?.dropoff?.datetime;
+  const pickedUp = order.status === 'ENTREGADO' || order.status === 'COMPLETADA';
+  const msToPickup = pickupMs(pickupAt) - Date.now();
+  const cancelOpen = order.status === 'CONFIRMED' && !(msToPickup < CANCEL_MIN_HOURS * 3_600_000);
 
   return (
     <PageContainer>
@@ -201,10 +258,22 @@ export function ConfirmationPage() {
 
         {error && <ErrorState message={error} />}
 
+        {pickedUp && (
+          <p className="rounded-md bg-neutral-50 p-3 text-sm text-neutral-600">
+            Vehículo entregado / Alquiler en curso (No cancelable)
+          </p>
+        )}
+        {order.status === 'CONFIRMED' && !cancelOpen && (
+          <p className="rounded-md bg-warning-50 p-3 text-sm text-neutral-700">
+            Cancelación no disponible (menos de 24h antes del retiro del vehículo). La política de
+            cancelación gratuita aplica hasta 24h antes.
+          </p>
+        )}
+
         <div className="flex gap-3">
-          {order.status === 'CONFIRMED' && (
-            <Button variant="destructive" loading={cancelling} onClick={handleCancel}>
-              Cancelar reserva
+          {cancelOpen && (
+            <Button variant="destructive" onClick={() => setConfirmingCancel(true)}>
+              Cancelar Renta
             </Button>
           )}
           <Link to="/">
@@ -285,6 +354,58 @@ export function ConfirmationPage() {
         </Card>
       )}
     </div>
+
+    {confirmingCancel && (
+      <Modal onClose={() => !cancelling && setConfirmingCancel(false)}>
+        <h2 className="text-lg font-bold text-neutral-900">¿Cancelar esta renta?</h2>
+        <p className="mt-2 text-sm text-neutral-600">
+          Se anulará la reserva <strong>{order.locator}</strong> y el vehículo volverá a estar
+          disponible para otros usuarios. Se te reembolsará el 100% del monto pagado.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button
+            variant="ghost"
+            type="button"
+            disabled={cancelling}
+            onClick={() => setConfirmingCancel(false)}
+          >
+            Volver
+          </Button>
+          <Button variant="destructive" loading={cancelling} onClick={handleCancel}>
+            Sí, cancelar renta
+          </Button>
+        </div>
+      </Modal>
+    )}
+
+    {cancelResult && (
+      <Modal onClose={() => setCancelResult(null)}>
+        <Badge tone="success">Cancelada</Badge>
+        <h2 className="mt-3 text-lg font-bold text-neutral-900">
+          ¡Cancelación y Reembolso Exitosos!
+        </h2>
+        <dl className="mt-3 flex flex-col gap-2 text-sm">
+          <div className="flex justify-between gap-4">
+            <dt className="text-neutral-500">Código de Reembolso</dt>
+            <dd className="font-semibold text-neutral-900">{cancelResult.refund.refund_id}</dd>
+          </div>
+          <div className="flex justify-between gap-4">
+            <dt className="text-neutral-500">Monto Reembolsado</dt>
+            <dd className="font-semibold text-neutral-900">
+              {cancelResult.refund.percentage}% (${cancelResult.refund.amount.toFixed(2)}{' '}
+              {cancelResult.refund.currency})
+            </dd>
+          </div>
+          <div className="flex justify-between gap-4">
+            <dt className="text-neutral-500">Inventario</dt>
+            <dd className="font-semibold text-success-600">✓ Vehículo liberado a DISPONIBLE</dd>
+          </div>
+        </dl>
+        <div className="mt-5 flex justify-end">
+          <Button onClick={() => setCancelResult(null)}>Entendido</Button>
+        </div>
+      </Modal>
+    )}
     </PageContainer>
   );
 }

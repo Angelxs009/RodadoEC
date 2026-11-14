@@ -93,6 +93,9 @@ describe('Saga de reserva (Reservas → Catálogo + Pagos)', () => {
     // Cancelar compensa: las fechas se liberan.
     const cancel = await api('POST', `/orders/${order.order_id}/cancel`, undefined, idem());
     expect(cancel.status).toBe(200);
+    expect(cancel.body.refund.refund_id).toMatch(/^REF-AUTO-/);
+    expect(cancel.body.refund.percentage).toBe(100);
+    expect(cancel.body.inventory_restoration.new_state).toBe('DISPONIBLE');
     const after = await api('POST', '/details', {});
     expect(after.body.data.find((v: any) => v.vehicle_id === ctx.car.vehicle_id).status).toBe('AVAILABLE');
     expect((await api('GET', `/orders/${order.order_id}`)).body.status).toBe('CANCELLED');

@@ -82,7 +82,7 @@ export interface DriverDetails {
   phone_number: string;
 }
 
-export type OrderStatus = 'CONFIRMED' | 'CANCELLED' | 'PENDING';
+export type OrderStatus = 'CONFIRMED' | 'CANCELLED' | 'PENDING' | 'ENTREGADO' | 'COMPLETADA';
 
 export interface OrderDetail {
   order_id: string;
@@ -95,6 +95,13 @@ export interface OrderDetail {
   currency: string;
   creation_date: string;
   _links: Record<string, string>;
+}
+
+export interface CancelResult {
+  order_id: string;
+  status: string;
+  refund: { refund_id: string; amount: number; currency: string; percentage: number; status: string };
+  inventory_restoration: { status: string; vehicle_id: string; new_state: string };
 }
 
 export interface CardInput {

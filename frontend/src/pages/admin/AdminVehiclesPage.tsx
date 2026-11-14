@@ -8,6 +8,7 @@ import { ErrorState } from '../../components/StateViews';
 import { VehicleImage } from '../../components/VehicleImage';
 import { Table, TableBody, TableHead, Td, Th, Tr } from '../../components/Table';
 import { ApiError, adminApi } from '../../lib/api';
+import { mergeById, usePolling } from '../../lib/use-polling';
 import { useAgencies } from '../../lib/depots';
 import type { AdminVehicle, CreateVehicleInput } from '../../types/admin';
 
@@ -16,7 +17,7 @@ const STATUS_BADGE: Record<AdminVehicle['status'], { label: string; tone: 'succe
   AVAILABLE: { label: 'Disponible', tone: 'success' },
   RESERVED: { label: 'Reservado', tone: 'danger' },
   READY_FOR_DELIVERY: { label: 'Listo para entregar', tone: 'brand' },
-  DELIVERED: { label: 'Entregado', tone: 'neutral' },
+  DELIVERED: { label: 'No disponible · En uso', tone: 'neutral' },
   CLEANING: { label: 'En limpieza', tone: 'warning' },
   MAINTENANCE: { label: 'En mantenimiento', tone: 'warning' },
 };
@@ -66,6 +67,12 @@ export function AdminVehiclesPage() {
   }
 
   useEffect(load, []);
+
+  // Stock en vivo: un auto cancelado vuelve a DISPONIBLE y uno alquilado pasa a EN USO sin recargar.
+  usePolling(async () => {
+    const fresh = await adminApi.listVehicles();
+    setVehicles((prev) => mergeById(prev, fresh));
+  });
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();

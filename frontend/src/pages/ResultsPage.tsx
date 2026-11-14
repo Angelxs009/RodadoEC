@@ -11,6 +11,7 @@ import { EmptyState, ErrorState, VehicleCardSkeleton } from '../components/State
 import { ApiError, autosApi } from '../lib/api';
 import { useBooking } from '../lib/booking-context';
 import { cityLabel, useAgencies } from '../lib/depots';
+import { usePolling } from '../lib/use-polling';
 
 function formatRange(from: string, to: string) {
   const fmt = new Intl.DateTimeFormat('es-EC', { day: 'numeric', month: 'short', timeZone: 'UTC' });
@@ -19,7 +20,7 @@ function formatRange(from: string, to: string) {
 
 export function ResultsPage() {
   const navigate = useNavigate();
-  const { searchRequest, searchResponse, detailsById: details, setDetailsById } = useBooking();
+  const { searchRequest, searchResponse, detailsById: details, setDetailsById, refreshSearchResponse } = useBooking();
 
   const { byId: agencyById } = useAgencies();
   const [agencyFilter, setAgencyFilter] = useState<number | null>(null);
@@ -77,7 +78,14 @@ export function ResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [searchResponse]);
+  }, [searchRequest]); // solo una búsqueda nueva reinicia la pantalla; el refresh silencioso no
+
+  // Stock en vivo: cada 5 s se reconsulta la disponibilidad; un auto cancelado vuelve a DISPONIBLE y uno alquilado deja de estarlo.
+  usePolling(async () => {
+    if (!searchRequest) return;
+    const fresh = await autosApi.search(searchRequest);
+    refreshSearchResponse(fresh);
+  }, undefined, !!searchRequest);
 
   if (!searchResponse) {
     return (

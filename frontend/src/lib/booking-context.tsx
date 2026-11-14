@@ -5,6 +5,8 @@ interface BookingState {
   searchRequest: CarSearchRequest | null;
   searchResponse: CarSearchResponse | null;
   setSearch: (req: CarSearchRequest, res: CarSearchResponse) => void;
+  /** Actualiza solo la disponibilidad de la búsqueda activa (refresh silencioso, sin reiniciar la pantalla). */
+  refreshSearchResponse: (res: CarSearchResponse) => void;
   detailsById: Record<string, CarDetailsResult>;
   setDetailsById: (details: Record<string, CarDetailsResult>) => void;
   holdId: string | null;
@@ -32,6 +34,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
       setSearchRequest(req);
       setSearchResponse(res);
     },
+    refreshSearchResponse: setSearchResponse,
     detailsById,
     setDetailsById,
     holdId,

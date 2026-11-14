@@ -473,8 +473,8 @@ export class AutosV2Controller {
       pnr: r.order.locator,
       status: r.order.status,
       auto_id: r.vehicle_id,
-      refund: { ...r.refund },
-      inventory_restoration: { status: 'RESTORED', vehicle_id: r.vehicle_id, new_state: ESTADO[r.vehicle_state] ?? 'DISPONIBLE' },
+      refund: { ...r.refund, message: 'Reembolso total de renta procesado sin penalización (Saga Pattern).' },
+      inventory_restoration: { status: 'RESTORED', vehicle_id: r.vehicle_id, new_state: ESTADO[r.vehicle_state] ?? 'DISPONIBLE', message: 'Vehículo reincorporado a flota disponible para renta.' },
       message: 'Orden de renta cancelada exitosamente. Vehículo liberado y reembolso procesado.',
     };
   }

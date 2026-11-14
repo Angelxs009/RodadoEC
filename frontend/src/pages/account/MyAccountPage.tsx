@@ -8,9 +8,12 @@ import { EmptyState, ErrorState, VehicleCardSkeleton } from '../../components/St
 import { UserIcon } from '../../components/icons';
 import { ApiError, customerApi } from '../../lib/api';
 import { useCustomerAuth } from '../../lib/customer-auth-context';
+import { mergeById, usePolling } from '../../lib/use-polling';
 import type { CustomerOrder } from '../../types/customer';
 
-const STATUS_TONE: Record<CustomerOrder['status'], 'success' | 'danger' | 'warning'> = {
+const STATUS_TONE: Record<string, 'success' | 'danger' | 'warning' | 'brand' | 'neutral'> = {
+  ENTREGADO: 'brand',
+  COMPLETADA: 'neutral',
   CONFIRMED: 'success',
   CANCELLED: 'danger',
   PENDING: 'warning',
@@ -36,6 +39,12 @@ export function MyAccountPage() {
   }
 
   useEffect(load, []);
+
+  // Refresh silencioso: si Booking o el mostrador cambian una orden, solo se actualiza su tarjeta.
+  usePolling(async () => {
+    const fresh = await customerApi.myOrders();
+    setOrders((prev) => mergeById(prev, fresh));
+  });
 
   function handleLogout() {
     logout();
@@ -98,7 +107,7 @@ export function MyAccountPage() {
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <Badge tone={STATUS_TONE[o.status]}>{o.status}</Badge>
+                  <Badge tone={STATUS_TONE[o.status] ?? 'neutral'}>{o.status}</Badge>
                   <p className="text-sm font-bold text-neutral-900">
                     ${o.total_price.toFixed(2)} {o.currency}
                   </p>

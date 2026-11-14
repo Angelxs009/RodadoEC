@@ -83,6 +83,7 @@ services:
       AUTH_ENFORCE_CUSTOMER: ${AUTH_ENFORCE_CUSTOMER:-false}
       AUTH_ENFORCE_V2: ${AUTH_ENFORCE_V2:-false}
       ALLOW_PAST_DATES: ${ALLOW_PAST_DATES:-false}
+      CANCEL_MIN_HOURS: ${CANCEL_MIN_HOURS:-24}
       BOOKING_API_KEY: ${BOOKING_API_KEY:-}
       NODE_API_KEY: ${NODE_API_KEY:-}
     depends_on: [catalog, booking, payments, identity]

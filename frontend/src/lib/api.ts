@@ -1,4 +1,5 @@
 import type {
+  CancelResult,
   CarDetailsResponse,
   CarSearchRequest,
   CardInput,
@@ -183,7 +184,7 @@ export const autosApi = {
     request<OrderDetail>(`/orders/${orderId}`, { method: 'GET', auth: true }),
 
   cancelOrder: (orderId: string) =>
-    request<void>(`/orders/${orderId}/cancel`, { auth: true, idempotent: true }),
+    request<CancelResult>(`/orders/${orderId}/cancel`, { auth: true, idempotent: true }),
 
   modifyOrder: (
     orderId: string,
@@ -279,7 +280,42 @@ export const adminApi = {
     if (!res.ok) throw new ApiError(data as ProblemDetails);
     return data as DeliveryResult;
   },
+
+  /** Check-in de devolución en mostrador (contrato v3): cierra la orden y deja el auto 2 h en limpieza. */
+  confirmReturn: async (
+    locator: string,
+    payload: { km_retorno: number; nivel_combustible?: number; observaciones?: string },
+  ): Promise<ReturnResult> => {
+    const token = getAdminToken();
+    const res = await fetch(
+      `${import.meta.env.VITE_API_URL ?? ''}/api/v3/autos/orders/${encodeURIComponent(locator)}/checkin-devolucion`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Affiliate-Id': AFFILIATE_ID,
+          'Idempotency-Key': crypto.randomUUID(),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+    const raw = await res.text();
+    const data = raw ? JSON.parse(raw) : undefined;
+    if (!res.ok) throw new ApiError(data as ProblemDetails);
+    return data as ReturnResult;
+  },
 };
+
+export interface ReturnResult {
+  success: boolean;
+  order_id: string;
+  estado_orden: string;
+  km_retorno: number;
+  km_recorridos: number;
+  cooldown: { vehiculo?: string; cooldown_horas?: number; disponible_desde?: string };
+  alerta_mantenimiento?: string;
+}
 
 /** Cliente (conductor) registrado en /api/v3/clientes. */
 export interface ClientRecord {

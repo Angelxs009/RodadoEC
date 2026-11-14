@@ -28,7 +28,7 @@ export interface LoginCustomerInput {
 export interface CustomerOrder {
   id: string;
   locator: string;
-  status: 'CONFIRMED' | 'CANCELLED' | 'PENDING';
+  status: 'CONFIRMED' | 'CANCELLED' | 'PENDING' | 'ENTREGADO' | 'COMPLETADA';
   vehicle_details: { make?: string; model?: string; image_url?: string | null };
   total_price: number;
   currency: string;

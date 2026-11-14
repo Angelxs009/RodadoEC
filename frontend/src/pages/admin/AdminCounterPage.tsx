@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { DeliveryDialog, deliveryNotice } from '../../components/DeliveryDialog';
+import { ReturnDialog, returnNotice } from '../../components/ReturnDialog';
 import { EmptyState, ErrorState } from '../../components/StateViews';
-import { ApiError, adminApi, findClient, type DeliveryResult } from '../../lib/api';
+import { ApiError, adminApi, findClient, type DeliveryResult, type ReturnResult } from '../../lib/api';
+import { mergeById, usePolling } from '../../lib/use-polling';
 import type { AdminOrder } from '../../types/admin';
 
 type Tone = 'success' | 'danger' | 'warning' | 'brand' | 'neutral';
@@ -34,6 +36,7 @@ export function AdminCounterPage() {
   const [emailByIdentification, setEmailByIdentification] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [delivering, setDelivering] = useState<AdminOrder | null>(null);
+  const [returning, setReturning] = useState<AdminOrder | null>(null);
   const [notice, setNotice] = useState<{ tone: 'success' | 'warning'; text: string } | null>(null);
 
   function load() {
@@ -47,6 +50,12 @@ export function AdminCounterPage() {
   }
 
   useEffect(load, []);
+
+  // Refresh silencioso: si Booking cancela una reserva o cambia su estado, la tarjeta se actualiza sola.
+  usePolling(async () => {
+    const fresh = await adminApi.listOrders();
+    setOrders((prev) => mergeById(prev, fresh));
+  });
 
   async function search(e: FormEvent) {
     e.preventDefault();
@@ -68,7 +77,7 @@ export function AdminCounterPage() {
   }
 
   const results = useMemo(() => {
-    if (!applied) return orders.filter((o) => o.status === 'CONFIRMED');
+    if (!applied) return orders.filter((o) => o.status === 'CONFIRMED' || o.status === 'ENTREGADO');
     return orders.filter((o) => {
       const email = norm(o.driver_details?.email);
       return (
@@ -86,12 +95,18 @@ export function AdminCounterPage() {
     load();
   }
 
+  function onReturned(order: AdminOrder, result: ReturnResult) {
+    setReturning(null);
+    setNotice(returnNotice(order, result));
+    load();
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="display-heading text-2xl text-neutral-900 sm:text-3xl">Mostrador de entregas</h1>
+        <h1 className="display-heading text-2xl text-neutral-900 sm:text-3xl">Mostrador de entregas y devoluciones</h1>
         <p className="text-sm text-neutral-500">
-          Busca la reserva del cliente y confirma la entrega de llaves. Se avisa al Booking automáticamente.
+          Busca la reserva del cliente: confirma la entrega de llaves (se avisa al Booking) o registra la devolución del auto.
         </p>
       </div>
 
@@ -161,7 +176,7 @@ export function AdminCounterPage() {
       {!loading && !searching && results.length > 0 && (
         <>
           <p className="text-sm font-medium text-neutral-500">
-            {applied ? `${results.length} resultado(s)` : `${results.length} reserva(s) pendiente(s) de entrega`}
+            {applied ? `${results.length} resultado(s)` : `${results.length} reserva(s) pendiente(s) de entrega o devolución`}
           </p>
           <ul className="flex flex-col gap-3">
             {results.map((o) => {
@@ -186,6 +201,11 @@ export function AdminCounterPage() {
                       Confirmar entrega de llaves
                     </Button>
                   )}
+                  {o.status === 'ENTREGADO' && (
+                    <Button onClick={() => setReturning(o)} className="shrink-0">
+                      Registrar devolución
+                    </Button>
+                  )}
                 </li>
               );
             })}
@@ -196,6 +216,8 @@ export function AdminCounterPage() {
       {delivering && (
         <DeliveryDialog order={delivering} onClose={() => setDelivering(null)} onDone={onDelivered} />
       )}
+
+      {returning && <ReturnDialog order={returning} onClose={() => setReturning(null)} onDone={onReturned} />}
     </div>
   );
 }

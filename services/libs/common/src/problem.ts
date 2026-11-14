@@ -88,8 +88,16 @@ export const cancellationNotAllowed = () =>
   problem(
     HttpStatus.CONFLICT,
     ProblemCode.CANCELLATION_NOT_ALLOWED,
-    'Cancelación no permitida',
-    'La orden no se puede cancelar en su estado actual.',
+    'Cancelación No Permitida',
+    'El vehículo ya fue retirado en mostrador o el alquiler ya comenzó; no se puede cancelar.',
+  );
+
+export const cancellationOutOfWindow = () =>
+  problem(
+    HttpStatus.CONFLICT,
+    ProblemCode.CANCELLATION_NOT_ALLOWED,
+    'Cancelación Fuera de Plazo',
+    'La cancelación y reembolso solo están permitidos con al menos 24 horas de anticipación a la fecha y hora de recogida.',
   );
 
 export const orderNotFound = (orderId: string) =>
