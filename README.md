@@ -12,6 +12,10 @@
 
 ## 1. Arquitectura
 
+![Arquitectura de RodadoEc](docs/arquitectura.png)
+
+Versión en texto:
+
 ```
  Frontend React (Vercel) ─┐
  Booking central ─────────┼─► API Gateway (NestJS) ──gRPC──► catalog-service   autos, agencias, disponibilidad por fechas
