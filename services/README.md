@@ -1,10 +1,10 @@
 # RodadoEc · Arquitectura de microservicios (Reto 2)
 
 Dominio **Autos** del Booking Prototipo, separado en cuatro microservicios detrás de un API Gateway.
-El monolito original sigue en [`../backend`](../backend) (rama `main`).
+El monolito original quedó en [`../backend`](../backend) solo como referencia histórica.
 
-**En internet:** API `https://rodadoec-api.onrender.com` · contrato oficial v3 en `/api/v3` (Swagger `/api/docs-v3`) · v1 en `/api/v1` ·
-GraphQL `/graphql` · salud `/autos/health` · frontend `https://rodado-ec.vercel.app` · base de datos en Neon (PostgreSQL).
+**En internet:** API `https://rodadoec-api.azurewebsites.net` (respaldo en Render) · contrato oficial v3 en `/api/v3` (Swagger `/api/docs-v3`) · v1 en `/api/v1` ·
+GraphQL `/graphql` · salud `/autos/health` · frontend `https://rodado-ec.vercel.app` · base de datos en Azure (PostgreSQL).
 
 ```
  Frontend (Vercel) ──┐

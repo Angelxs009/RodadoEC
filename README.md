@@ -1,171 +1,113 @@
 # RodadoEc — Dominio Autos (Booking Prototipo)
 
-**RodadoEc** es la implementación del dominio **Renta de Autos** para el proyecto integrador Booking Prototipo (curso Integración de Sistemas, PUCE). Cumple el contrato `contracts/autos-openapi.yaml` provisto por la cátedra e incorpora un backoffice de administración, un mecanismo de eventos (webhooks) y un frontend de reserva completo.
+**RodadoEc** es el nodo de **Renta de Autos** del proyecto integrador Booking Prototipo (curso Integración de Sistemas, PUCE). Es un sistema de **microservicios** con un API Gateway al frente, que implementa el contrato oficial **v3** del agregador Booking, e incluye una web de reserva y un backoffice de mostrador.
 
-## 0. Dos versiones del sistema
+| | Dirección |
+|---|---|
+| Sitio web (Vercel) | https://rodado-ec.vercel.app |
+| API (Azure App Service) | https://rodadoec-api.azurewebsites.net/api/v3 |
+| Swagger del contrato v3 | https://rodadoec-api.azurewebsites.net/api/docs-v3 |
+| Salud | `GET /api/v3/autos/health` · calentar servicios: `GET /warmup` |
+| Respaldo | Render (`render.microservicios.yaml`) |
 
-| | Monolito (rama `main`) | **Microservicios (rama `microservicios`)** |
-|---|---|---|
-| Código | [`backend/`](backend) + [`frontend/`](frontend) | [`services/`](services) (gateway + Catálogo, Reservas, Pagos, Identidad) |
-| Contrato | `contracts/autos-openapi.yaml` (v1) | **`contracts/autos-openapi-v3.yaml`** (oficial del agregador Booking), más gRPC, GraphQL y eventos |
-| Datos | Postgres único | Postgres con un schema por servicio ([`database/02_microservicios_autos.sql`](database/02_microservicios_autos.sql)) |
-| En internet | `rodadoec-backend` (Render) | **`https://rodadoec-api.onrender.com`** (Render + Neon) |
-
-La versión de microservicios es la vigente: implementa las 19 operaciones del contrato v3 (máquina de 6 estados, cooldown de limpieza de 2 h,
-check-ins, mantenimiento, promociones B2B, feed de eventos), empuja el stock a Booking por gRPC, publica eventos en RabbitMQ/Kafka y
-valida cada respuesta contra el YAML con 49 pruebas de integración. Documentación completa en **[`services/README.md`](services/README.md)**;
-guías de integración con Booking en [`docs/`](docs). El frontend (`frontend/`, Vercel) es el mismo y apunta al API nuevo con `VITE_API_URL`.
-Para correr todo en local: `docker compose up --build` (gateway en `http://localhost:3000`).
-
-El resto de este documento describe el diseño del monolito original (contrato v1), que sigue en la rama `main`.
-
-## 1. Alcance
-
-- **Backend** (`backend/`): API REST en NestJS + TypeORM + PostgreSQL, fiel al contrato OpenAPI del dominio Autos, más un módulo de administración y un despachador de eventos.
-- **Frontend** (`frontend/`): SPA en React + Vite + Tailwind con el flujo completo de reserva (búsqueda → detalle → checkout → confirmación → modificar/cancelar) y un panel de administración (vehículos, agencias, órdenes).
-
-## 2. Arquitectura
+## 1. Arquitectura
 
 ```
-┌─────────────────┐      REST (JSON)      ┌───────────────────────────┐
-│  Frontend React  │ ───────────────────▶ │   API NestJS (/api/v1)    │
-│  (Vite + Router) │ ◀─────────────────── │                            │
-└─────────────────┘                       │  ┌──────────────────────┐  │
-                                           │  │ AutosController      │  │  ← 1:1 con autos-openapi.yaml
-                                           │  │ (contrato público)   │  │
-                                           │  └──────────┬───────────┘  │
-                                           │             │              │
-                                           │  ┌──────────▼───────────┐  │
-                                           │  │ AutosService          │──┼──▶ TtlCacheService (search_token,
-                                           │  │                       │  │      hold_id, order_preview_id)
-                                           │  └──────────┬───────────┘  │
-                                           │             │              │
-                                           │  ┌──────────▼───────────┐  │        ┌─────────────────────┐
-                                           │  │ WebhooksDispatcher    │──┼──HTTP─▶│ Sistemas externos    │
-                                           │  │ Service (EDA)         │  │  POST  │ suscritos a eventos  │
-                                           │  └───────────────────────┘  │        └─────────────────────┘
-                                           │                            │
-                                           │  ┌──────────────────────┐  │
-                                           │  │ AdminController        │  │  ← backoffice, no es parte
-                                           │  │ (/admin/...)           │  │    del contrato público
-                                           │  └──────────┬───────────┘  │
-                                           └─────────────┼──────────────┘
-                                                          │
-                                                   ┌──────▼──────┐
-                                                   │  PostgreSQL │
-                                                   └─────────────┘
+ Frontend React (Vercel) ─┐
+ Booking central ─────────┼─► API Gateway (NestJS) ──gRPC──► catalog-service   autos, agencias, disponibilidad por fechas
+ Otros subgrafos ─────────┘   REST /api/v1 · /v2 · /v3          booking-service   hold, preview, órdenes, cancelación, anexos, webhooks, SAGA
+                              GraphQL /graphql                    payments-service  pago simulado, reembolsos
+                              JWT · roles · X-API-Key             identity-service  clientes, administradores, JWT
+                                     │
+                                     ├─► PostgreSQL: un schema por servicio (catalog, booking, payments, identity)
+                                     └─► Outbox ─► RabbitMQ / Kafka (CloudEvents) · Webhooks firmados con HMAC
 ```
 
-El `AutosController` es fiel al contrato del curso (rutas planas: `/search`, `/orders/hold`, etc., sin prefijo de dominio, porque cada equipo corre su propia instancia). El `AdminController` vive aparte, bajo `/admin`, porque es tooling interno de gestión — no forma parte del contrato que se comparte con los demás grupos.
+| Pieza | Responsabilidad |
+|---|---|
+| `services/apps/gateway` | Entrada única: REST (v1, v2, v3), GraphQL federado, JWT por rol, `X-API-Key` del Booking, `Idempotency-Key`, errores RFC 7807, `X-Correlation-Id`, circuit breaker |
+| `services/apps/catalog` | Vehículos, agencias, proveedores; reserva atómica del auto; estados y limpieza |
+| `services/apps/booking` | Búsqueda, hold, preview, órdenes, cancelación, entrega/devolución, contratos anexos; **orquesta la saga** |
+| `services/apps/payments` | Pasarela simulada (Luhn), consumo de pago y reembolsos |
+| `services/apps/identity` | Registro/login, administradores, emisión y verificación de JWT |
+| `services/apps/all` | Los 5 módulos en un solo proceso (así corre en Azure) |
+| `services/libs/common` | Logger JSON, correlation id, ProblemDetails sobre gRPC, caché TTL, JWT |
+| `frontend/` | React + Vite + Tailwind: web del cliente y panel de mostrador/administración |
+| `contracts/` | OpenAPI v1–v3, `.proto` por servicio, GraphQL, AsyncAPI, `CHANGELOG.md`, `baseline.json`, `check-compat.js` |
 
-## 3. Modelo de datos
+El monolito original (contrato v1) quedó en `backend/` solo como referencia histórica.
 
-| Entidad | Tabla | Campos clave | Notas |
-|---|---|---|---|
-| `Vehicle` | `autos_vehicles` | `vehicle_id`, `make`, `model`, `car_type`, `transmission`, `price_per_day`, `supplier_id`, `depot_id`, `status` (`AVAILABLE`/`RESERVED`), `min_driver_age` | Catálogo administrable (31 autos base); fuente de verdad para `/search` y `/details`. Un auto `RESERVED` no se puede volver a reservar hasta que el admin lo marque `AVAILABLE`. |
-| `Depot` | `autos_depots` | `depot_id`, `name`, `city_id`, `airport`, `score` | Agencias de recogida/entrega. |
-| `Supplier` | `autos_suppliers` | `supplier_id`, `name` | Proveedores de renta. |
-| `Order` | `autos_orders` | `locator`, `status`, `vehicle_details` (jsonb), `route_details` (jsonb), `extras`, `total_price`, `currency` | Snapshot del vehículo/ruta al momento de la reserva; persiste el ciclo de vida completo (CONFIRMED/CANCELLED). |
-| `AdminUser` | `autos_admins` | `username` (único), `password_hash` (scrypt), `first_name`, `last_name` | Administradores creados desde el panel; conviven con la cuenta de arranque (`ADMIN_USERNAME`/`ADMIN_PASSWORD`). |
-| `Customer` | `autos_customers` | `email` (único), `password_hash`, `first_name`, `last_name`, `phone_number` | Clientes: se registran solos o los crea un admin. |
-| `Payment` | `autos_payments` | `reference`, `status` (`APPROVED`/`DECLINED`/`REFUNDED`), `amount`, `order_preview_id`, `card_brand`, `card_last4`, `order_id` | Pago simulado. Nunca guarda número completo ni CVV. Un pago aprobado se consume en una sola orden. |
-| `WebhookSubscription` | `autos_webhook_subscriptions` | `url`, `events` (array), `secret` | Suscripciones a eventos de dominio. |
+## 2. Flujo de negocio
 
-Las tablas se siembran automáticamente al arrancar (`AutosSeedService`, idempotente) con el catálogo inicial definido en `backend/src/modules/autos/data/mock-catalog.ts`.
+1. **Reserva:** búsqueda → hold del auto → vista previa → pago → orden `CONFIRMED` (PNR). El auto se reserva de forma atómica; si el pago o la reserva fallan, la saga compensa (reembolso y liberación del auto).
+2. **Cancelación:** solo con **al menos 24 h** de anticipación a la recogida (`CANCEL_MIN_HOURS`). Antes del plazo hay reembolso del 100 % y el auto vuelve al inventario; después, `409 Cancelación Fuera de Plazo`. Una orden ya entregada o completada responde `409 Cancelación No Permitida`.
+3. **Mostrador:** check-in digital → entrega de llaves (odómetro de salida, estado `ENTREGADO`) → devolución (odómetro de retorno, orden `COMPLETADA`) → limpieza de 2 h → `DISPONIBLE`.
+4. **Contrato anexo:** los extras, upgrades o días adicionales pedidos al retirar se cobran aparte (`ANX-XXXXXX`); la orden original no cambia.
+5. **Disponibilidad por fechas:** un auto solo queda ocupado entre su recogida y su devolución más 2 h de limpieza.
 
-Los estados efímeros del flujo de reserva (`search_token`, `hold_id`, `order_preview_id`) **no** se persisten en base de datos: viven en una caché en memoria con expiración (`TtlCacheService`), igual que lo haría un `search_token` de corta vida en un GDS real.
+El panel de órdenes y el de flota se refrescan solos cada 5 segundos, sin recargar la página.
 
-## 4. APIs
+## 3. Contratos
 
-### 4.1 Contrato público (`contracts/autos-openapi.yaml`)
-
-13 endpoints agrupados en 5 categorías: Búsqueda y Catálogo (`/search`, `/details`), Agencias y Proveedores (`/depots`, `/depots/reviews/scores`, `/suppliers`), Componentes Comunes (`/constants`), Gestión de Órdenes (`/orders/hold`, `/orders/preview`, `/orders/create`, `/orders/{id}`, `/orders/{id}/modify`, `/orders/{id}/cancel`) y Webhooks (`/webhooks`, `/webhooks/{id}`). Documentados en Swagger: `http://localhost:3000/api/docs`.
-
-### 4.1.1 Pago simulado y disponibilidad
-
-- `POST /payments` (extra, no contractual): simula una pasarela. Recibe `order_preview_id` + tarjeta; el monto lo toma el servidor de la previsualización. Tarjeta `4242 4242 4242 4242` = aprobada; `4000 0000 0000 0002` = rechazada (fondos insuficientes); número inválido (Luhn) o vencida = rechazada (HTTP 402).
-- **Cuenta de cliente:** en la web, `/checkout` exige iniciar sesión (redirige al login/registro y vuelve al checkout). El API acepta reservas con o sin token de cliente (si llega uno válido, la orden queda ligada a esa cuenta) para poder probarlo desde Swagger. Swagger no tiene ningún endpoint con candado.
-- `POST /orders/create` **exige** un `payment_reference` de un pago APROBADO, no usado, de esa previsualización y por el total exacto; si no, responde 402 `PAYMENT_REQUIRED`.
-- Al crear la orden el auto pasa a `RESERVED` de forma atómica (`UPDATE ... WHERE status='AVAILABLE'`): si dos clientes intentan reservarlo a la vez, solo uno gana y el otro recibe 409 `CAR_NO_LONGER_AVAILABLE` (y su pago se marca `REFUNDED`).
-- `/search` devuelve los autos reservados con `available: false`; la web los muestra como "Reservado" y no deja seleccionarlos. `hold`, `preview` y `payments` también rechazan autos reservados.
-- Cancelar una orden libera el auto y reembolsa (simulado) el pago. El admin también puede liberar/bloquear un auto: `POST /admin/vehicles/:id/release` y `/reserve`.
-
-### 4.1.2 Edad mínima del conductor
-
-Cada vehículo tiene `min_driver_age` (18 años por defecto, la mayoría de edad en Ecuador; editable desde el admin para subirla en autos específicos). Si `driver.age` de la búsqueda es menor, `hold`, `preview` y `payments` responden 409 `DRIVER_AGE_RESTRICTION` (código definido en el contrato). `/search` y `/details` devuelven `min_driver_age`; la web muestra la insignia "Desde N años" y deshabilita esos autos.
-
-### 4.1.3 Agencias y ciudades
-
-Hay 6 agencias (2 por ciudad: Quito, Guayaquil y Cuenca) y cada auto pertenece a una (`depot_id`). `/search` filtra por la ubicación de recogida: `route.pickup.location.city_id` (ciudad) o `.airport` (código IATA); sin ubicación devuelve todo el catálogo. Los resultados incluyen `depot_id`, y la web muestra la agencia y su puntuación en la portada, los resultados (con filtro por agencia), el detalle del auto y la confirmación de la reserva (recogida y entrega).
-
-### 4.2 Backoffice de administración (no forma parte del contrato)
-
-| Método | Ruta | Descripción |
+| Contrato | Archivo | Versión |
 |---|---|---|
-| GET/POST | `/api/v1/admin/vehicles` | Listar / crear vehículos |
-| PUT/DELETE | `/api/v1/admin/vehicles/:id` | Editar / eliminar un vehículo |
-| POST | `/api/v1/admin/vehicles/:id/release` · `/reserve` | Marcar un vehículo como disponible / reservado |
-| GET/POST | `/api/v1/admin/depots` | Listar / crear agencias |
-| PUT/DELETE | `/api/v1/admin/depots/:id` | Editar / eliminar una agencia |
-| GET/POST | `/api/v1/admin/users` | Listar / crear usuarios, **administradores y clientes** (sin candado en Swagger). Las cuentas creadas son válidas al instante: el admin entra por `/admin/auth/login` y el cliente por `/auth/login`. |
-| DELETE | `/api/v1/admin/users/:role/:id` | Eliminar un usuario (`role` = `ADMIN` o `CUSTOMER`) |
-| GET | `/api/v1/admin/orders` | Listar todas las órdenes (filtro opcional `?status=`) |
-| GET | `/api/v1/admin/orders/:id` | Detalle administrativo de una orden |
+| REST oficial del agregador (`/api/v3`) | `contracts/autos-openapi-v3.yaml` | 3.3.0 |
+| REST anterior (`/api/v2`) y original (`/api/v1`) | `autos-openapi-v2.yaml` · `autos-openapi.yaml` | 2.0.0 · 1.1.0 |
+| gRPC internos | `contracts/proto/autos/{common,catalog,booking,payments,identity}/v1` | v1 |
+| Stock hacia Booking | `contracts/proto/inventory/inventory.proto` | de Booking |
+| GraphQL federado | `contracts/graphql/autos.graphql` | 1.0.0 |
+| Eventos | `contracts/autos-asyncapi.yaml` | 1.1.0 |
 
-Documentado en el mismo Swagger, bajo el tag **Administración**.
+Los cambios compatibles suben MINOR; los que rompen requieren una versión nueva (`/api/v4`). Detalle en `contracts/CHANGELOG.md`. El verificador `node contracts/check-compat.js` (se corre desde `services/`) compara contra `baseline.json` y falla ante un cambio que rompa.
 
-## 5. Diseño de eventos (SOA/EDA)
+## 4. Seguridad
 
-El sistema emite eventos de dominio cuando cambia el estado de una orden. El mecanismo de entrega reutiliza el CRUD de `Webhooks` ya definido en el contrato: cualquier sistema externo se suscribe con `POST /webhooks` indicando su URL y los eventos de interés.
+- **JWT HS256** con secretos separados: administradores (12 h) y clientes (30 d). Roles `ADMIN`, `CLIENTE` y `MANTENIMIENTO`.
+- **`X-API-Key`** (`NODE_API_KEY`): Booking la envía en las rutas de órdenes y reservas (`/autos/orders…`, `/autos/reservas`). Sin ella o con una distinta responde 401.
+- Tarjetas validadas con Luhn (nunca se guarda el número completo ni el CVV), CORS por lista, webhooks firmados con HMAC e `Idempotency-Key` en toda mutación.
 
-| Evento | Disparado por | Estado |
-|---|---|---|
-| `CAR_ORDER_CONFIRMED` | `POST /orders/create` | ✅ Implementado (`WebhooksDispatcherService`) |
-| `CAR_ORDER_CANCELLED` | `POST /orders/{id}/cancel` | ✅ Implementado |
-| `DEPOT_UPDATE` | — | 📋 Documentado en `contracts/autos-asyncapi.yaml` como evolución futura; aún no se dispara desde ningún flujo. |
+## 5. Cómo correrlo
 
-El envío es *best-effort* y asíncrono respecto a la respuesta HTTP: un webhook caído se registra en el log del servidor pero nunca bloquea ni hace fallar la operación que lo originó. El contrato formal de estos eventos está en `backend/contracts/autos-asyncapi.yaml` (AsyncAPI 2.6), complementario al OpenAPI.
-
-## 6. Cómo correr el proyecto
-
-### Backend
 ```bash
-cd backend
-npm install
-cp .env.example .env   # ajustar DATABASE_URL si hace falta
-docker compose up -d   # levanta Postgres
-npm run start:dev
-```
-Swagger: `http://localhost:3000/api/docs`
+# Todo el sistema con Docker (gateway en http://localhost:3000)
+docker compose up --build
 
-### Frontend
-```bash
+# Solo el backend, sin Docker (requiere Postgres y .env)
+cd services
+npm ci
+npm run build
+node dist/apps/all/main
+
+# Frontend
 cd frontend
-npm install
-npm run dev
+npm ci
+npm run dev        # http://localhost:5173
 ```
-App: `http://localhost:5173` (proxy configurado hacia el backend en `vite.config.ts`)
 
-## 6.1 Despliegue en la nube
+Variables principales: `DATABASE_URL`, `ADMIN_JWT_SECRET`, `CUSTOMER_JWT_SECRET`, `NODE_API_KEY`, `CANCEL_MIN_HOURS` (por defecto 24), `CORS_ORIGINS`, y `VITE_API_URL` en el frontend.
 
-El proyecto ya está preparado para desplegarse (Dockerfile del backend, blueprint de Render, y frontend parametrizado con `VITE_API_URL`). Pasos:
+## 6. Pruebas y CI/CD
 
-### Backend + base de datos → Render
-1. En [render.com](https://render.com), **New → Blueprint**, apuntar al repo `Angelxs009/RodadoEC` (usa `render.yaml` en la raíz: crea el web service `rodadoec-backend` desde `backend/Dockerfile` y una Postgres administrada `rodadoec-db`, ya enlazadas por `DATABASE_URL`).
-2. Al desplegar pedirá `CORS_ORIGINS` (variable marcada `sync: false`): déjala vacía por ahora, o ponla luego con la URL del frontend (ver paso 4).
-3. Al terminar, Render da una URL pública, ej. `https://rodadoec-backend.onrender.com`. Swagger queda en `/api/docs`. La app siembra la base automáticamente al primer arranque (`AutosSeedService`).
+```bash
+cd services
+npm run test:unit          # pruebas unitarias
+npm run test:integration   # integración contra el sistema levantado
+node ../contracts/check-compat.js
+```
 
-### Frontend → Vercel
-1. En [vercel.com](https://vercel.com), **New Project**, importar el mismo repo, **Root Directory:** `frontend`.
-2. Framework preset: Vite (autodetectado). Build command y output quedan por defecto (`npm run build` / `dist`).
-3. Variable de entorno `VITE_API_URL` = la URL del backend de Render (sin slash final, ej. `https://rodadoec-backend.onrender.com`) — ver `.env.production.example`.
-4. Deploy. Vercel da una URL, ej. `https://rodadoec.vercel.app`. Volver a Render y setear `CORS_ORIGINS` a esa URL para restringir el CORS del backend en producción (si se deja vacío, el backend acepta cualquier origen).
+- **CI** (`.github/workflows/ci.yml`): lint de tipos → pruebas unitarias → E2E con Postgres → verificación de contratos. Cada job depende del anterior.
+- **CD** (`.github/workflows/cd.yml`): al terminar el CI en verde se despliega a Azure con login federado **OIDC** (sin contraseñas ni perfiles de publicación) y una prueba de humo sobre `/api/v3/autos/health`.
+- Las pruebas de integración validan cada respuesta contra el esquema del propio OpenAPI v3 (ajv).
 
-### Notas
-- `synchronize: true` en TypeORM crea el esquema automáticamente en la Postgres de Render; no se usan migraciones (prototipo académico).
-- El plan free de Render "duerme" el backend tras inactividad: la primera petición tras un rato puede tardar ~30s en responder.
+## 7. Más documentación
 
-## 7. Limitaciones conocidas / alcance no cubierto
+- [`services/README.md`](services/README.md): detalle de los microservicios, la saga y el contrato v2/v3.
+- [`docs/INFORME_TECNICO.md`](docs/INFORME_TECNICO.md): informe técnico.
+- [`docs/GUIA_INTEGRACION_AUTOS.md`](docs/GUIA_INTEGRACION_AUTOS.md) y [`docs/GUIA-INTEGRACION-LOCAL.md`](docs/GUIA-INTEGRACION-LOCAL.md): integración con Booking.
+- [`docs/GUION_DEFENSA.md`](docs/GUION_DEFENSA.md): guion de la defensa.
 
-- **Seguridad simplificada**: no existe un servidor de autorización OAuth2 real; el guard de scopes (`ScopesGuard`) solo exige la presencia de un header `Authorization: Bearer`, sin validar firma ni claims. El contrato documenta los scopes reales (`autos:read`, `autos:book`, `autos:cancel`, `autos:webhooks`) vía Swagger para fines de interoperabilidad.
-- El evento `DEPOT_UPDATE` está documentado pero no implementado (ver sección 5).
+## 8. Limitaciones conocidas
+
+- Proyecto académico: el pago es simulado y no hay pasarela real.
+- El envío de stock hacia Booking (`INVENTORY_REST_URL` / `INVENTORY_GRPC_URL`) depende de que Booking entregue su URL y clave; mientras tanto Booking obtiene los autos leyendo `GET /api/v3/autos`.
+- El esquema se crea con `synchronize: true` de TypeORM, sin migraciones.
